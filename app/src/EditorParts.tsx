@@ -66,18 +66,21 @@ export function Segmented<T>({ items, value, onChange }: { items: { value: T; la
   const [boxes, setBoxes] = useState<Record<number, LayoutRectangle>>({});
   const idx = Math.max(0, items.findIndex(i => i.value === value));
   const x = useSharedValue(0);
+  const y = useSharedValue(0);
   const w = useSharedValue(0);
   const box = boxes[idx];
   useEffect(() => {
     if (!box) return;
     const first = w.value === 0;
     x.value = first ? box.x : withSpring(box.x, SPRING);
+    y.value = first ? box.y : withSpring(box.y, SPRING);
     w.value = first ? box.width : withSpring(box.width, SPRING);
-  }, [box, x, w]);
-  const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }], width: w.value, opacity: w.value ? 1 : 0 }));
+  }, [box, x, y, w]);
+  // Wraps onto more rows when the labels don't fit; the thumb follows in both directions.
+  const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }, { translateY: y.value }], width: w.value, opacity: w.value ? 1 : 0 }));
   return (
     <View style={st.seg}>
-      <Animated.View style={[st.segThumb, thumb]} />
+      <Animated.View style={[st.segThumb, box && { height: box.height }, thumb]} />
       {items.map((it, i) => (
         <Pressable key={it.label} onPress={() => onChange(it.value)} accessibilityRole="button" accessibilityState={{ selected: i === idx }}
           onLayout={e => { const l = e.nativeEvent.layout; setBoxes(b => ({ ...b, [i]: l })); }} style={st.segItem}>
@@ -241,14 +244,16 @@ export const st = StyleSheet.create({
 
   seg: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     padding: 3,
     borderRadius: 13,
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: C.hairline,
   },
-  segThumb: { position: 'absolute', top: 3, bottom: 3, left: 0, borderRadius: 10, backgroundColor: C.silver },
+  segThumb: { position: 'absolute', top: 0, left: 0, borderRadius: 10, backgroundColor: C.silver },
   segItem: { paddingVertical: 9, paddingHorizontal: 14 },
   segText: { color: C.secondary, fontSize: 14, fontWeight: '500' },
   segTextOn: { color: C.bg },

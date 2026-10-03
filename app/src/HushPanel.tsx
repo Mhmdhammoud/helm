@@ -139,11 +139,11 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
               <HushSegmented options={SELF_VOICE} value={h?.selfVoice} disabled={!live}
                 onChange={v => hush(`selfvoice/${v}`, { selfVoice: v })} />
             </HushCard>
-            <HushCard style={st.toggles}>
+            <HushCard title="MODES" style={st.toggles}>
               <HushToggle label="Conversation mode" hint="Hear the room without taking them off" value={h?.conversation} disabled={!live}
                 onChange={v => hush(`conversation/${v ? 'on' : 'off'}`, { conversation: v })} />
               <View style={st.rule} />
-              <HushToggle label="Call mode" hint="During calls: full noise cancelling, and you hear yourself" value={h?.callMode} disabled={!live}
+              <HushToggle label="Call mode" hint="During calls: full noise cancelling, and you hear yourself" value={h?.callMode} disabled={!h || !!error}
                 onChange={v => hush(`callmode/${v ? 'on' : 'off'}`, { callMode: v })} />
             </HushCard>
           </View>
@@ -155,14 +155,14 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
                 {(h?.devices ?? []).length === 0 && (
                   <Text style={st.empty}>{connected ? 'No other devices paired yet' : 'Devices show up here when your headphones are on'}</Text>
                 )}
-                {(h?.devices ?? []).map(d => (
+                {(h?.devices ?? []).map(d => ({ ...d, connected: d.connected && live })).map(d => (
                   <Pressable key={d.mac} disabled={d.connected || !live} onPress={() => hush(`switch/${d.name}`)}
-                    style={({ pressed }) => [st.device, d.connected && st.deviceOn, pressed && st.pressed]}>
+                    style={({ pressed }) => [st.device, d.connected && st.deviceOn, !live && st.off, pressed && st.pressed]}>
                     <Symbol name={deviceSymbol(d)} size={22} weight="regular" color={d.connected ? C.bg : C.secondary} />
                     <View style={st.flex}>
                       <Text style={[st.deviceName, d.connected && st.textOn]} numberOfLines={1}>{d.name}</Text>
                       <Text style={[st.deviceHint, d.connected && st.textOnDim]}>
-                        {d.connected ? 'Playing here' : 'Tap to switch'}{d.isHost ? ' · this Mac' : ''}
+                        {!live ? 'Remembered' : d.connected ? 'Playing here' : 'Tap to switch'}{d.isHost ? ' · this Mac' : ''}
                       </Text>
                     </View>
                     {d.connected && <Symbol name="checkmark" size={16} weight="semibold" color={C.bg} />}
@@ -236,7 +236,7 @@ const st = StyleSheet.create({
   heroHint: { color: C.dim, fontSize: 14 },
   col: { flex: 1.15, gap: 20 },
   eq: { flexDirection: 'row', justifyContent: 'space-between' },
-  toggles: { flex: 1, justifyContent: 'center' },
+  toggles: { flex: 1 },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.12)', marginVertical: 2 },
   side: { flex: 0.95, gap: 20 },
   devices: { gap: 10 },

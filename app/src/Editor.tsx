@@ -5,7 +5,7 @@ import type { Client } from './api';
 import { Backdrop } from './Backdrop';
 import { KeyTile, type Feedback } from './KeyTile';
 import { ICONS, Symbol, defaultSymbol } from './Symbol';
-import type { Action, ActionType, Key, Live, Mod, Page } from './types';
+import type { State, Action, ActionType, Key, Live, Mod, Page } from './types';
 import { C, SPRING } from './theme';
 import { Advanced, Heading, IconTile, Input, Keycap, MODS, NAMED_KEYS, Options, Segmented, Suggest, Swatches, capFor, st as p } from './EditorParts';
 
@@ -274,8 +274,10 @@ function IconCell({ on, onPress, label, wide, children }: { on: boolean; onPress
 }
 
 /** Edits one key in a two-pane sheet: a live preview on the left, everything it does on the right. */
-export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
+export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, onCancel }: {
   initial: Key | null;
+  /** Live Mac/headphone state, so the preview shows real readings. */
+  state?: State | null;
   api: Client;
   pages: Page[];
   onSave: (k: Key) => void;
@@ -343,7 +345,7 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
             <View style={st.left}>
               <Backdrop calm={0.7} />
               <View style={st.preview}>
-                <KeyTile k={k} id="editor/0" size={200} api={api} state={null} editing={false} picked={false} feedback={feedback}
+                <KeyTile k={k} id="editor/0" size={200} api={api} state={state} editing={false} picked={false} feedback={feedback}
                   onPress={test} onLongPress={() => {}} />
               </View>
               <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Title" autoCapitalize="words" style={st.title} />

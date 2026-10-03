@@ -303,7 +303,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       )}
 
       {editSlot != null && (
-        <KeyEditor initial={page.keys[editSlot] ?? null} api={api} pages={deck.pages}
+        <KeyEditor initial={page.keys[editSlot] ?? null} api={api} pages={deck.pages} state={state}
           onCancel={() => setEditSlot(null)}
           onSave={k => { setKey(editSlot, k); setEditSlot(null); }}
           onClear={() => { setKey(editSlot, null); setEditSlot(null); }} />

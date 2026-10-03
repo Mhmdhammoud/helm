@@ -16,6 +16,8 @@ const NODES: Record<string, LucideIconNode[]> = {
   conversation: [p(HEADPHONES), p('M9 9v2'), p('M12 7v6'), p('M15 9v2')],
   'hear-yourself': [p(HEADPHONES), ['circle', { cx: 12, cy: 7.5, r: 1.75 }], p('M9 13.5a3 3 0 0 1 6 0')],
   'switch-device': [p(HEADPHONES), p('M7.5 10h9'), p('m9.5 8-2 2 2 2'), p('m14.5 8 2 2-2 2')],
+  // Mac mini / Studio: a low rounded box with the power light, seen from the front.
+  'mac-mini': [['rect', { x: 3, y: 9, width: 18, height: 7, rx: 2.5 }], p('M7 19h10'), ['circle', { cx: 17, cy: 12.5, r: 0.5 }]],
   // The Hush mark: a ring holding a wave that dies out.
   hush: [['circle', { cx: 12, cy: 12, r: 10 }], p('M6 12c.8-4 1.7-4 2.5 0c.8 3 1.7 3 2.5 0c.7-2 1.5-2 2.25 0c.6 1 1.4 1 2 0H18')],
   // Meetings: a muted mic / camera framed like the call tile in focus.
@@ -63,7 +65,7 @@ const NODES: Record<string, LucideIconNode[]> = {
 // @nodes-end
 
 export const HELM_LABELS: Record<string, string> = {
-  'noise-max': 'Noise cancelling max', 'noise-off': 'Noise cancelling off', 'noise-cycle': 'Cycle noise cancelling',
+  'mac-mini': 'Mac mini', 'noise-max': 'Noise cancelling max', 'noise-off': 'Noise cancelling off', 'noise-cycle': 'Cycle noise cancelling',
   conversation: 'Conversation mode', 'hear-yourself': 'Hear yourself', 'switch-device': 'Switch device', hush: 'Hush',
   'meeting-mute': 'Meeting mute', 'meeting-video-off': 'Meeting video off', screenshot: 'Screenshot region',
   'mission-control': 'Mission Control', 'display-sleep': 'Display sleep', 'running-apps': 'Running apps',

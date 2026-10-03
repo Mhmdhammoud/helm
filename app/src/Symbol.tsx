@@ -38,7 +38,7 @@ const SF: Record<string, string> = {
   video: 'video', 'video.fill': 'video', 'video.circle': 'helm:meeting-video-off',
   'speaker.slash.fill': 'volume-x', 'speaker.wave.1.fill': 'volume-1', 'speaker.wave.2.fill': 'volume-2', 'speaker.wave.3.fill': 'volume-2',
   iphone: 'smartphone', 'ipad.landscape': 'tablet', laptopcomputer: 'laptop', desktopcomputer: 'monitor', appletv: 'tv',
-  macmini: 'hard-drive', macstudio: 'hard-drive', 'macpro.gen3': 'pc-case',
+  macmini: 'helm:mac-mini', macstudio: 'helm:mac-mini', 'macpro.gen3': 'pc-case',
 };
 
 // Lucide already draws these precisely; the helm: ids exist so callers can ask by intent.
