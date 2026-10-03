@@ -13,13 +13,13 @@ export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 
 
 const key = (title, action, extra = {}) => ({ title, action, ...extra });
 
-/** First-run deck: something useful on every page, and one of each action type to copy from. */
+/** First-run deck: a few everyday keys; the library in Edit has the rest. */
 export function defaultDeck() {
   return {
     version: 1,
     grid: { cols: 6, rows: 4 },
     autoProfile: true,
-    dials: ['volume', 'anc'],
+    dials: ['volume'],
     pages: [
       {
         id: 'main',
@@ -29,31 +29,14 @@ export function defaultDeck() {
           1: key('Safari', { type: 'open', target: 'Safari' }, { icon: { app: 'Safari' } }),
           2: key('Terminal', { type: 'open', target: 'Terminal' }, { icon: { app: 'Terminal' } }),
           3: key('Mic', { type: 'mic' }, { live: 'mic' }),
-          4: key('Hush', { type: 'app', app: 'hush' }, { live: 'battery' }),
-          5: key('Zoom', { type: 'page', page: 'zoom' }, { color: '#1f3b73' }),
           6: key('Prev', { type: 'media', key: 'previous' }),
           7: key('Play', { type: 'media', key: 'play' }),
           8: key('Next', { type: 'media', key: 'next' }),
           12: key('Screenshot', { type: 'hotkey', key: '4', mods: ['cmd', 'shift'] }),
           13: key('Spotlight', { type: 'hotkey', key: 'space', mods: ['cmd'] }),
-          14: key('Focus', { type: 'multi', steps: [{ type: 'hush', cmd: 'anc/10' }, { type: 'open', target: 'https://music.youtube.com' }], delayMs: 200 }, { color: '#3b2a5c' }),
-          15: key('Shrug', { type: 'text', text: '¯\\_(ツ)_/¯' }),
-          16: key('Lock', { type: 'system', what: 'lock' }),
-          17: key('Display', { type: 'system', what: 'sleep-display' }),
-        },
-      },
-      {
-        id: 'zoom',
-        name: 'Zoom',
-        app: 'zoom.us',
-        keys: {
-          0: key('Back', { type: 'back' }),
-          1: key('Mute', { type: 'hotkey', key: 'a', mods: ['cmd', 'shift'] }, { icon: { symbol: 'helm:meeting-mute' } }),
-          2: key('Video', { type: 'hotkey', key: 'v', mods: ['cmd', 'shift'] }, { icon: { symbol: 'helm:meeting-video-off' } }),
-          3: key('Share', { type: 'hotkey', key: 's', mods: ['cmd', 'shift'] }, { icon: { symbol: 'screen-share' } }),
-          4: key('Chat', { type: 'hotkey', key: 'h', mods: ['cmd', 'shift'] }, { icon: { symbol: 'message-circle' } }),
-          5: key('Leave', { type: 'hotkey', key: 'w', mods: ['cmd'] }, { color: '#5c1f1f', icon: { symbol: 'phone-off' } }),
-          6: key('Call ANC', { type: 'toggle', on: { type: 'hush', cmd: 'anc/10' }, off: { type: 'hush', cmd: 'anc/5' } }, { live: 'toggle', icon: { symbol: 'helm:noise-max' } }),
+          14: key('Shrug', { type: 'text', text: '¯\\_(ツ)_/¯' }),
+          15: key('Lock', { type: 'system', what: 'lock' }),
+          16: key('Display', { type: 'system', what: 'sleep-display' }),
         },
       },
     ],
