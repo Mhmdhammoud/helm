@@ -42,7 +42,10 @@ const SF: Record<string, string> = {
 };
 
 // Lucide already draws these precisely; the helm: ids exist so callers can ask by intent.
-const ALIASES: Record<string, string> = { 'helm:cpu': 'cpu', 'helm:memory': 'memory-stick', 'helm:clock': 'clock' };
+const ALIASES: Record<string, string> = {
+  'helm:cpu': 'cpu', 'helm:memory': 'memory-stick', 'helm:clock': 'clock',
+  memorychip: 'memory-stick', 'square.grid.3x3.fill': 'helm:running-apps', 'square.grid.3x3': 'grid-3x3',
+};
 
 const pascal = (id: string) => id.replace(/(^|-)([a-z0-9])/g, (_, __, c: string) => c.toUpperCase());
 // ponytail: the Lucide barrel bundles every icon (~1.9k) so any kebab id works; switch to per-icon imports if bundle size matters.
@@ -50,7 +53,9 @@ const lucide = Lucide as unknown as Record<string, LucideIcon | undefined>;
 
 /** The component for an icon id: Lucide kebab-case, "helm:<id>", or a legacy SF Symbol name. */
 export function iconComponent(name: string): LucideIcon | undefined {
-  const id = ALIASES[name] ?? SF[name] ?? name;
+  // SF names saved in older decks may carry variants (".fill", ".circle") the table doesn't list.
+  const base = name.replace(/\.(fill|circle|square)$/, '');
+  const id = ALIASES[name] ?? SF[name] ?? ALIASES[base] ?? SF[base] ?? name;
   return id.startsWith('helm:') ? HELM_ICONS[id.slice(5)] : lucide[pascal(id)];
 }
 

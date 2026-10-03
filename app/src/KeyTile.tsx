@@ -197,7 +197,7 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
           </Canvas>
         </Animated.View>
 
-        <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: size * 0.08 }]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: size * 0.08 }, level != null && { paddingBottom: size * 0.2 }]} pointerEvents="none">
           {k ? (
             <>
               {live.face ? (
