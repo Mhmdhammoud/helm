@@ -23,6 +23,17 @@ const SECTIONS: { title: string; keys: Key[] }[] = [
     ],
   },
   {
+    title: 'Live',
+    keys: [
+      k('Now playing', { type: 'media', key: 'play' }, { icon: { symbol: 'helm:now-playing' }, live: 'nowplaying', hold: { type: 'media', key: 'next' } }),
+      k('Clock', { type: 'open', target: 'Clock' }, { icon: { symbol: 'clock' }, live: 'clock' }),
+      k('CPU', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'cpu' }, live: 'cpu' }),
+      k('Memory', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'memory-stick' }, live: 'memory' }),
+      k('Battery', { type: 'open', target: 'x-apple.systempreferences:com.apple.Battery-Settings.extension' }, { icon: { symbol: 'battery' }, live: 'macbattery' }),
+      k('Headphones', { type: 'app', app: 'hush' }, { live: 'battery' }),
+    ],
+  },
+  {
     title: 'Mac',
     keys: [
       k('Mic', { type: 'mic' }, { live: 'mic' }),
