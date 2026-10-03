@@ -1,9 +1,10 @@
 // Runs deck actions on the Mac. All process spawning goes through `exec(cmd, args)` so tests can record it.
 // User text and names reach AppleScript as argv, never spliced into script source.
-import { execFile } from 'node:child_process';
+import { execFile, spawn as spawnProc } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { BadRequest } from './deck.js';
@@ -72,7 +73,7 @@ export function makeRunner({
   // Compiled once on first use; null if that failed (no Xcode tools), and callers fall back to osascript.
   let helper;
   function mediakeyBin() {
-    const bin = join(supportDir, 'bin/mediakey');
+    const bin = join(supportDir, 'bin/mediakey3'); // v3: stdin (long-running) mode with a launch warm-up
     if (existsSync(bin)) return Promise.resolve(bin);
     helper ??= (async () => {
       mkdirSync(join(supportDir, 'bin'), { recursive: true });
@@ -81,10 +82,34 @@ export function makeRunner({
     })().catch(() => null);
     return helper;
   }
+  // With the real exec the helper stays running (stdin mode) so a press is ~2ms instead of a ~100ms launch.
+  // Tests (recording exec) and any failure of the long-running helper use one-shot `mediakey <code>`.
+  let keyProc = null;
+  const keyWaiters = [];
+  function keyHelper(bin) {
+    if (keyProc) return keyProc;
+    const p = spawnProc(bin, [], { stdio: ['pipe', 'pipe', 'ignore'] });
+    p.unref?.(); p.stdin.unref?.(); p.stdout.unref?.();
+    p.stdin.on('error', () => {});
+    createInterface({ input: p.stdout }).on('line', l => keyWaiters.shift()?.(l === 'ok'));
+    const gone = () => { if (keyProc === p) keyProc = null; keyWaiters.splice(0).forEach(w => w(false)); };
+    p.on('exit', gone);
+    p.on('error', gone);
+    return (keyProc = p);
+  }
   /** Posts one system media-key press; false if the helper isn't available. */
   async function postKey(code) {
     const bin = await mediakeyBin();
     if (!bin) return false;
+    if (exec === realExec) {
+      const ok = await new Promise(resolve => {
+        // A stuck helper is killed (which also fails anything queued behind it) so replies never misalign.
+        const t = setTimeout(() => { keyProc?.kill(); resolve(false); }, 2000);
+        keyWaiters.push(v => { clearTimeout(t); resolve(v); });
+        keyHelper(bin).stdin.write(`${code}\n`);
+      });
+      if (ok) return true;
+    }
     try { await exec(bin, [String(code)]); return true; } catch { return false; }
   }
   async function mediaKey(name) {
@@ -104,7 +129,9 @@ export function makeRunner({
       const target = Math.max(0, Math.min(100, Number(a.set) || 0));
       const current = Number(await as('output volume of (get volume settings)'));
       // Key presses move along macOS's 16-step grid; the first press from an off-grid level only snaps to it.
-      const t = Math.round(target / 6.25), c = Math.round((current / 6.25) * 100) / 100;
+      const t = Math.round(target / 6.25);
+      let c = current / 6.25;
+      if (Math.abs(c - Math.round(c)) < 0.1) c = Math.round(c); // osascript rounds to whole percents: 31 is grid line 5
       steps = Math.max(-16, Math.min(16, t > c ? t - Math.floor(c) : t < c ? t - Math.ceil(c) : 0));
       if (!steps) return target === current ? undefined : as(`set volume output volume ${target}`);
       if (gen !== volGen) return;
@@ -190,6 +217,8 @@ export function makeRunner({
     };
   }
 
+  // Start the key helper now so the first press doesn't pay for its launch.
+  if (exec === realExec) mediakeyBin().then(bin => bin && keyHelper(bin));
   return { run, toggles, macState };
 }
 

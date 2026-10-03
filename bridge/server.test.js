@@ -114,7 +114,7 @@ test('runs each action type as the right command', async t => {
   await run({ type: 'script', command: 'echo hi' });
   assert.deepEqual(last(), ['/bin/zsh', '-lc', 'echo hi']);
   await run({ type: 'volume', change: 6 });
-  assert.match(last()[0], /bin\/mediakey$/);
+  assert.match(last()[0], /bin\/mediakey3$/);
   assert.equal(last()[1], '0', 'volume up is a real volume key, so the HUD shows');
   await run({ type: 'system', what: 'sleep-display' });
   assert.deepEqual(last(), ['pmset', 'displaysleepnow']);
@@ -305,11 +305,11 @@ test('volume uses the real volume keys (HUD), latest-wins, osascript fallback', 
   const exec = async (cmd, args) => {
     calls.push([cmd, ...args]);
     if (cmd === 'swiftc') { if (failCompile) throw new Error('no swiftc'); return writeFileSync(args.at(-1), ''); }
-    if (cmd.endsWith('bin/mediakey')) { await new Promise(r => setTimeout(r, 2)); return ''; }
+    if (cmd.endsWith('bin/mediakey3')) { await new Promise(r => setTimeout(r, 2)); return ''; }
     if (cmd === 'osascript' && args[1].startsWith('output volume')) return String(current);
     return '';
   };
-  const keys = () => calls.filter(c => c[0].endsWith('bin/mediakey')).map(c => c[1]);
+  const keys = () => calls.filter(c => c[0].endsWith('bin/mediakey3')).map(c => c[1]);
   const r = makeRunner({ exec, hushCli: '/x', supportDir: dir });
 
   await r.run({ type: 'volume', change: -6 }, 'k');
