@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 import type { Client } from './api';
 import { Dial } from './Dial';
 import { Fader } from './Fader';
@@ -221,6 +223,42 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (availH - gap * (rows - 1)) / rows));
   const dials = deck.dials ?? [];
 
+  // Swipe between pages: the grid follows the finger on the UI thread; React only learns the new page.
+  const gridW = cols * size + (cols - 1) * gap;
+  const pageIndex = deck.pages.findIndex(p => p.id === pageId);
+  const swipeX = useSharedValue(0);
+  const slideIn = useRef(0); // after a swipe, the next page enters from this side (+1 right, -1 left)
+  const goTo = (i: number, dir: number) => {
+    auto.current = null;
+    slideIn.current = dir;
+    setStack([deck.pages[i].id]);
+  };
+  useLayoutEffect(() => {
+    if (!slideIn.current) return;
+    swipeX.value = slideIn.current * gridW * 0.6;
+    swipeX.value = withSpring(0, SPRING);
+    slideIn.current = 0;
+  }, [pageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const last = deck.pages.length - 1;
+  const swipe = usePanGesture({
+    enabled: !editing && deck.pages.length > 1,
+    activeOffsetX: [-14, 14],
+    failOffsetY: [-14, 14],
+    onUpdate: e => {
+      'worklet';
+      const edge = (pageIndex === 0 && e.translationX > 0) || (pageIndex === last && e.translationX < 0);
+      swipeX.value = edge ? e.translationX * 0.25 : e.translationX; // resists past the first and last page
+    },
+    onDeactivate: e => {
+      'worklet';
+      const dir = e.translationX < -gridW * 0.22 || e.velocityX < -600 ? 1 : e.translationX > gridW * 0.22 || e.velocityX > 600 ? -1 : 0;
+      const to = pageIndex + dir;
+      if (!dir || to < 0 || to > last) { swipeX.value = withSpring(0, SPRING); return; }
+      swipeX.value = withTiming(-dir * gridW * 0.6, { duration: 140 }, done => { if (done) scheduleOnRN(goTo, to, dir); });
+    },
+  });
+  const swiped = useAnimatedStyle(() => ({ transform: [{ translateX: swipeX.value }], opacity: 1 - Math.min(0.6, Math.abs(swipeX.value) / gridW) }));
+
   const floating = useAnimatedStyle(() => ({ transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1.08 }] }));
 
   const editTools = editing && (
@@ -267,8 +305,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
           onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
           {size > 0 && (
             // Absolutely placed so widgets can span slots; a slot under a widget isn't drawn.
+            <GestureDetector gesture={swipe}>
             <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)}
-              style={{ width: cols * size + (cols - 1) * gap, height: rows * size + (rows - 1) * gap }}>
+              style={[{ width: gridW, height: rows * size + (rows - 1) * gap }, swiped]}>
               {Array.from({ length: cols * rows }, (_, i) => {
                 const slot = String(i);
                 if (grid.owner[i] != null && grid.owner[i] !== slot) return null;
@@ -289,6 +328,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                 );
               })}
             </Animated.View>
+            </GestureDetector>
           )}
         </View>
 
