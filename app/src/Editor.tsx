@@ -264,10 +264,10 @@ function HotkeyForm({ keyName, mods, set }: { keyName: string; mods: Mod[]; set:
   );
 }
 
-function IconCell({ on, onPress, label, children }: { on: boolean; onPress: () => void; label: string; children: React.ReactNode }) {
+function IconCell({ on, onPress, label, wide, children }: { on: boolean; onPress: () => void; label: string; wide?: boolean; children: React.ReactNode }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }}
-      style={({ pressed }) => [st.cell, on && p.tileOn, pressed && p.pressed]}>
+      style={({ pressed }) => [st.cell, wide && st.cellWide, on && p.tileOn, pressed && p.pressed]}>
       {children}
     </Pressable>
   );
@@ -372,17 +372,17 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
 
               <Group title="Icon">
                 <View style={st.icons}>
-                  <IconCell label="Automatic" on={kind === 'auto'} onPress={() => set({ icon: undefined })}>
+                  <IconCell wide label="Automatic" on={kind === 'auto'} onPress={() => set({ icon: undefined })}>
                     <Symbol name={defaultSymbol(k.action)} size={18} color={kind === 'auto' ? C.bg : C.text} />
                     <Text style={[st.cellLabel, kind === 'auto' && p.tileLabelOn]}>Auto</Text>
                   </IconCell>
                   {knownApp && (
-                    <IconCell label="App icon" on={kind === 'app'} onPress={() => set({ icon: { app: target } })}>
+                    <IconCell wide label="App icon" on={kind === 'app'} onPress={() => set({ icon: { app: target } })}>
                       <Image source={api.icon(target)} style={st.appIcon} />
                       <Text style={[st.cellLabel, kind === 'app' && p.tileLabelOn]}>App</Text>
                     </IconCell>
                   )}
-                  <IconCell label="Emoji" on={kind === 'emoji'} onPress={() => set({ icon: { emoji: k.icon?.emoji || '⭐️' } })}>
+                  <IconCell wide label="Emoji" on={kind === 'emoji'} onPress={() => set({ icon: { emoji: k.icon?.emoji || '⭐️' } })}>
                     <Text style={st.emojiCell}>{k.icon?.emoji || '😀'}</Text>
                     <Text style={[st.cellLabel, kind === 'emoji' && p.tileLabelOn]}>Emoji</Text>
                   </IconCell>
@@ -425,7 +425,7 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
 
 const st = StyleSheet.create({
   flex: { flex: 1 },
-  scrim: { backgroundColor: 'rgba(0,0,0,0.6)' },
+  scrim: { backgroundColor: 'rgba(0,0,0,0.78)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sheet: {
     borderRadius: 28,
@@ -505,7 +505,8 @@ const st = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: C.hairline,
   },
-  cellLabel: { color: C.dim, fontSize: 10, fontWeight: '600', marginTop: -2 },
+  cellWide: { width: 76, height: 68, gap: 4 },
+  cellLabel: { color: C.dim, fontSize: 11, fontWeight: '600' },
   appIcon: { width: 28, height: 28 },
   emojiCell: { fontSize: 20 },
   emojiInput: { marginTop: 12, width: 260, fontSize: 22 },

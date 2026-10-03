@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const fs: { readFileSync(p: string, e: string): string; readdirSync(p: string): string[] } = require('fs');
 const LUCIDE = 'node_modules/lucide-react-native/dist/esm/lucide-react-native.mjs';
 
