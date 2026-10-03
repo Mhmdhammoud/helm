@@ -25,7 +25,7 @@ const SF: Record<string, string> = {
   'ear.trianglebadge.exclamationmark': 'helm:noise-max', ear: 'helm:noise-off',
   doc: 'file', 'doc.fill': 'file', 'doc.on.clipboard': 'clipboard-paste', 'doc.on.doc': 'copy',
   'envelope.fill': 'mail', 'fan.fill': 'fan', 'folder.fill': 'folder', 'gearshape.fill': 'settings', 'hammer.fill': 'hammer',
-  'heart.fill': 'heart', 'house.fill': 'house', 'lightbulb.fill': 'lightbulb', 'star.fill': 'star', 'sun.max.fill': 'sun',
+  'heart.fill': 'heart', 'text.cursor': 'text-cursor-input', 'sun.min.fill': 'sun-dim', 'house.fill': 'house', 'lightbulb.fill': 'lightbulb', 'star.fill': 'star', 'sun.max.fill': 'sun',
   'thermometer.medium': 'thermometer', 'music.note': 'music', 'message.fill': 'message-circle', 'phone.fill': 'phone',
   'person.fill': 'user', 'person.2.fill': 'users', 'person.wave.2': 'helm:conversation', 'person.wave.2.fill': 'helm:conversation',
   'person.fill.xmark': 'user-x', waveform: 'helm:hear-yourself', 'waveform.slash': 'ear-off',
@@ -108,7 +108,7 @@ export function defaultSymbol(a: Action, live?: { micMuted?: boolean; muted?: bo
     case 'hotkey':
       return HOTKEYS.find(h => h.key === a.key.toLowerCase() && sameMods(a.mods, h.mods))?.icon ?? 'command';
     case 'text': return 'text-cursor-input';
-    case 'media': return { play: 'helm:play-pause', next: 'skip-forward', previous: 'skip-back' }[a.key];
+    case 'media': return { play: 'helm:play-pause', next: 'skip-forward', previous: 'skip-back', 'brightness-up': 'sun', 'brightness-down': 'sun-dim' }[a.key];
     case 'volume':
       if (a.mute || live?.muted) return 'volume-x';
       return (a.change ?? 0) < 0 ? 'volume-1' : 'volume-2';

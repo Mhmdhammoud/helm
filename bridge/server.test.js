@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { appIcon, hotkeyScript, parseHush } from './actions.js';
+import { appIcon, hotkeyScript, makeRunner, parseHush } from './actions.js';
 import { cpuLoad, macBattery, memoryUsed } from './features.js';
 import { defaultDeck, saveDeck, validateDeck } from './deck.js';
 import { serve } from './server.js';
@@ -111,7 +111,8 @@ test('runs each action type as the right command', async t => {
   await run({ type: 'script', command: 'echo hi' });
   assert.deepEqual(last(), ['/bin/zsh', '-lc', 'echo hi']);
   await run({ type: 'volume', change: 6 });
-  assert.match(last()[2], /\+ 6\)$/);
+  assert.match(last()[0], /bin\/mediakey$/);
+  assert.equal(last()[1], '0', 'volume up is a real volume key, so the HUD shows');
   await run({ type: 'system', what: 'sleep-display' });
   assert.deepEqual(last(), ['pmset', 'displaysleepnow']);
 
@@ -292,4 +293,62 @@ test('run answers before a slow action finishes; bridge id survives a restart', 
   t.after(() => again.close());
   const hello = await (await fetch(`http://127.0.0.1:${again.address().port}/hello`)).json();
   assert.equal(hello.id, id);
+});
+
+test('volume uses the real volume keys (HUD), latest-wins, osascript fallback', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'helm-'));
+  let current = 50, failCompile = false;
+  const calls = [];
+  const exec = async (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (cmd === 'swiftc') { if (failCompile) throw new Error('no swiftc'); return writeFileSync(args.at(-1), ''); }
+    if (cmd.endsWith('bin/mediakey')) { await new Promise(r => setTimeout(r, 2)); return ''; }
+    if (cmd === 'osascript' && args[1].startsWith('output volume')) return String(current);
+    return '';
+  };
+  const keys = () => calls.filter(c => c[0].endsWith('bin/mediakey')).map(c => c[1]);
+  const r = makeRunner({ exec, hushCli: '/x', supportDir: dir });
+
+  await r.run({ type: 'volume', change: -6 }, 'k');
+  await r.run({ type: 'volume', mute: 'toggle' }, 'k');
+  assert.deepEqual(keys(), ['1', '7']);
+  assert.equal(calls.filter(c => c[0] === 'swiftc').length, 1, 'helper compiled once');
+
+  calls.length = 0;
+  await r.run({ type: 'volume', set: 75 }, 'dial'); // 50 → 75 = 4 steps of 6.25
+  assert.deepEqual(keys(), ['0', '0', '0', '0']);
+  calls.length = 0;
+  await r.run({ type: 'volume', set: 100 }, 'dial'); // 50 → 100 = 8 steps, capped at 16
+  assert.equal(keys().length, 8);
+  calls.length = 0;
+  await r.run({ type: 'volume', set: 0 }, 'dial');
+  assert.deepEqual(new Set(keys()), new Set(['1']));
+  assert.equal(keys().length, 8);
+
+  calls.length = 0;
+  current = 50;
+  await r.run({ type: 'volume', set: 52 }, 'dial'); // under one step: set silently
+  assert.equal(keys().length, 0);
+  assert.match(calls.at(-1)[2], /set volume output volume 52/);
+  calls.length = 0;
+  current = 76;
+  await r.run({ type: 'volume', set: 50 }, 'dial'); // off-grid: the first press only snaps 76 → 75
+  assert.equal(keys().length, 5);
+
+  calls.length = 0;
+  current = 0;
+  const old = r.run({ type: 'volume', set: 100 }, 'dial');
+  await new Promise(res => setTimeout(res, 5));
+  await Promise.all([old, r.run({ type: 'volume', set: 0 }, 'dial')]);
+  assert.ok(keys().filter(k => k === '0').length < 16, 'the older dial turn was abandoned');
+
+  const dir2 = mkdtempSync(join(tmpdir(), 'helm-'));
+  failCompile = true;
+  calls.length = 0;
+  const r2 = makeRunner({ exec, hushCli: '/x', supportDir: dir2 });
+  await r2.run({ type: 'volume', change: 6 }, 'k');
+  assert.match(calls.at(-1)[2], /\+ 6\)$/, 'no helper: osascript as before');
+  await r2.run({ type: 'volume', mute: 'toggle' }, 'k');
+  assert.match(calls.at(-1)[2], /output muted/);
+  assert.equal(calls.filter(c => c[0] === 'swiftc').length, 1, 'a failed compile is not retried');
 });

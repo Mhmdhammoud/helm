@@ -34,7 +34,7 @@ export type Deck = {
   version: 1;
   grid: { cols: number; rows: number };
   autoProfile: boolean;
-  dials: ('volume' | 'anc')[];
+  dials: ('volume' | 'anc' | 'brightness')[];
   pages: Page[];
 };
 

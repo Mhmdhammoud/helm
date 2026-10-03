@@ -75,17 +75,20 @@ export function Library({ api, state, dragging, onAdd, onDragStart }: {
 }) {
   const [apps, setApps] = useState<string[]>([]);
   const [shortcuts, setShortcuts] = useState<string[]>([]);
+  const [running, setRunning] = useState<string[]>([]);
   const [q, setQ] = useState('');
   useEffect(() => {
     api.apps().then(setApps, () => {});
     api.shortcuts().then(setShortcuts, () => {});
+    api.running().then(r => setRunning(r.map(a => a.name)), () => {});
   }, [api]);
 
   const query = q.trim().toLowerCase();
   const sections = useMemo(() => {
     const appList = query
       ? apps.filter(a => a.toLowerCase().includes(query)).slice(0, 24)
-      : FAVOURITE_APPS.filter(a => apps.includes(a));
+      // What's open on the Mac first (so your own tools, like cmux, are right there), then common apps.
+      : [...new Set([...running, ...FAVOURITE_APPS.filter(a => apps.includes(a))])];
     const all = [
       { title: 'Apps', keys: appList.map(a => k(a.replace(/\.us$/, ''), { type: 'open', target: a }, { icon: { app: a } })) },
       ...SECTIONS,
@@ -94,7 +97,7 @@ export function Library({ api, state, dragging, onAdd, onDragStart }: {
     return all
       .map(s => ({ ...s, keys: query && s.title !== 'Apps' ? s.keys.filter(x => x.title?.toLowerCase().includes(query)) : s.keys }))
       .filter(s => s.keys.length);
-  }, [apps, shortcuts, query]);
+  }, [apps, shortcuts, running, query]);
 
   return (
     <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={st.panel}>

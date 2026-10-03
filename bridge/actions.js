@@ -19,6 +19,7 @@ const KEY_CODES = {
 };
 const MODS = { cmd: 'command down', shift: 'shift down', opt: 'option down', alt: 'option down', ctrl: 'control down' };
 // NX_KEYTYPE_* codes. Brightness keys only reach built-in and Apple displays; macOS can't dim third-party monitors.
+const SOUND = { up: 0, down: 1, mute: 7 };
 const MEDIA = { play: 16, next: 17, previous: 18, 'brightness-up': 2, 'brightness-down': 3 };
 const HUSH = {
   anc: /^(10|[0-9]|up|down|cycle)$/,
@@ -62,13 +63,59 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
   const toggles = {}; // "page/slot" → on?
   let lastMic = 75;
 
-  async function mediaKey(name) {
+  // Compiled once on first use; null if that failed (no Xcode tools), and callers fall back to osascript.
+  let helper;
+  function mediakeyBin() {
     const bin = join(supportDir, 'bin/mediakey');
-    if (!existsSync(bin)) {
+    if (existsSync(bin)) return Promise.resolve(bin);
+    helper ??= (async () => {
       mkdirSync(join(supportDir, 'bin'), { recursive: true });
       await exec('swiftc', ['-O', fileURLToPath(new URL('./mediakey.swift', import.meta.url)), '-o', bin], 120000);
+      return bin;
+    })().catch(() => null);
+    return helper;
+  }
+  /** Posts one system media-key press; false if the helper isn't available. */
+  async function postKey(code) {
+    const bin = await mediakeyBin();
+    if (!bin) return false;
+    try { await exec(bin, [String(code)]); return true; } catch { return false; }
+  }
+  async function mediaKey(name) {
+    if (!(await postKey(MEDIA[name]))) throw new Error('media keys need the mediakey helper (Xcode command line tools)');
+  }
+
+  // Volume goes through the real volume keys so macOS shows its volume HUD; one key step is 1/16.
+  let volGen = 0; // latest-wins: a newer volume request abandons an older one mid-loop
+  async function volume(a) {
+    const gen = ++volGen;
+    if (a.mute === 'toggle') {
+      if (await postKey(SOUND.mute)) return;
+      return osa(exec, 'set volume output muted (not (output muted of (get volume settings)))');
     }
-    await exec(bin, [String(MEDIA[name])]);
+    let steps;
+    if (a.set != null) {
+      const target = Math.max(0, Math.min(100, Number(a.set) || 0));
+      const current = Number(await osa(exec, 'output volume of (get volume settings)'));
+      // Key presses move along macOS's 16-step grid; the first press from an off-grid level only snaps to it.
+      const t = Math.round(target / 6.25), c = Math.round((current / 6.25) * 100) / 100;
+      steps = Math.max(-16, Math.min(16, t > c ? t - Math.floor(c) : t < c ? t - Math.ceil(c) : 0));
+      if (!steps) return target === current ? undefined : osa(exec, `set volume output volume ${target}`);
+      if (gen !== volGen) return;
+    } else {
+      const change = Math.round(Number(a.change) || 0);
+      if (!change) return;
+      steps = Math.sign(change) * Math.max(1, Math.round(Math.abs(change) / 6.25));
+    }
+    for (let i = 0; i < Math.abs(steps); i++) {
+      if (gen !== volGen) return;
+      if (!(await postKey(steps > 0 ? SOUND.up : SOUND.down))) {
+        if (i) return; // the helper died mid-way; leave it where it got to
+        return a.set != null
+          ? osa(exec, `set volume output volume ${Math.max(0, Math.min(100, Number(a.set) || 0))}`)
+          : osa(exec, `set volume output volume ((output volume of (get volume settings)) + ${Math.round(Number(a.change) || 0)})`);
+      }
+    }
   }
 
   async function run(a, id) {
@@ -85,9 +132,7 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
         if (!Object.hasOwn(MEDIA, a.key)) throw new BadRequest(`unknown media key: ${a.key}`);
         return mediaKey(a.key);
       case 'volume':
-        if (a.mute === 'toggle') return osa(exec, 'set volume output muted (not (output muted of (get volume settings)))');
-        if (a.set != null) return osa(exec, `set volume output volume ${Math.max(0, Math.min(100, Number(a.set) || 0))}`);
-        return osa(exec, `set volume output volume ((output volume of (get volume settings)) + ${Math.round(Number(a.change) || 0)})`);
+        return volume(a);
       case 'shortcut':
         return exec('shortcuts', ['run', String(a.name ?? '')], 120000);
       case 'script':

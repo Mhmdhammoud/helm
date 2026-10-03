@@ -3,6 +3,7 @@ import { ActionSheetIOS, Alert, PanResponder, Pressable, ScrollView, StyleSheet,
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Dial } from './Dial';
+import { Fader } from './Fader';
 import { KeyEditor } from './Editor';
 import { KeyTile, type Feedback } from './KeyTile';
 import { usePageKeys } from './running';
@@ -275,6 +276,16 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
               <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180} label="NOISE"
                 onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
             )}
+          </View>
+        )}
+        {!editing && dials.includes('brightness') && (
+          <View style={st.dials}>
+            {/* macOS can't report brightness, so the fader keeps its own position and nudges the Mac per step. */}
+            <Fader label="BRIGHTNESS" height={Math.min(420, area.h)} format={v => `${Math.round((v / 16) * 100)}`}
+              onStep={d => {
+                const action = { type: 'media' as const, key: d > 0 ? 'brightness-up' as const : 'brightness-down' as const };
+                api.run(Math.abs(d) === 1 ? action : { type: 'multi', steps: Array(Math.abs(d)).fill(action), delayMs: 0 }).catch(() => {});
+              }} />
           </View>
         )}
       </View>

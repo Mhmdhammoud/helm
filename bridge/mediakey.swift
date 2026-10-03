@@ -1,4 +1,5 @@
-// mediakey <code>: posts a hardware media-key press (16 play/pause, 17 next, 18 previous).
+// mediakey <code>: posts a hardware media-key press (NX_KEYTYPE_*: 0/1 sound up/down, 7 mute,
+// 2/3 brightness up/down, 16 play/pause, 17 next, 18 previous). Volume keys show the macOS HUD.
 // AppleScript/JXA can't post these, so the bridge compiles this on first use.
 import AppKit
 

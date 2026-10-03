@@ -4,7 +4,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTim
 import type { Client } from './api';
 import { Backdrop } from './Backdrop';
 import { KeyTile, type Feedback } from './KeyTile';
-import { Symbol, defaultSymbol } from './Symbol';
+import { ICONS, Symbol, defaultSymbol } from './Symbol';
 import type { Action, ActionType, Key, Live, Mod, Page } from './types';
 import { C, SPRING } from './theme';
 import { Advanced, Heading, IconTile, Input, Keycap, MODS, NAMED_KEYS, Options, Segmented, Suggest, Swatches, capFor, st as p } from './EditorParts';
@@ -76,16 +76,8 @@ const LIVES: { value: Live | undefined; label: string }[] = [
   { value: 'macbattery', label: 'Mac battery' },
 ];
 
-// Curated glyphs: media, system, apps, communication, dev, home, arrows.
-const SYMBOLS = [
-  'play.fill', 'pause.fill', 'playpause.fill', 'backward.fill', 'forward.fill', 'speaker.wave.3.fill', 'speaker.slash.fill', 'music.note',
-  'mic.fill', 'mic.slash.fill', 'headphones', 'video.fill',
-  'lock.fill', 'moon.fill', 'sun.max.fill', 'power', 'gearshape.fill', 'display', 'keyboard', 'command', 'camera.fill', 'bolt.fill',
-  'safari', 'envelope.fill', 'message.fill', 'calendar', 'folder.fill', 'doc.fill', 'phone.fill', 'person.fill', 'person.2.fill', 'bell.fill',
-  'terminal.fill', 'chevron.left.forwardslash.chevron.right', 'hammer.fill', 'cpu',
-  'house.fill', 'lightbulb.fill', 'fan.fill', 'thermometer.medium', 'star.fill', 'heart.fill',
-  'arrow.up', 'arrow.down', 'arrow.left', 'arrow.right', 'arrow.clockwise', 'arrow.uturn.backward',
-];
+// The curated picker list lives with the icon set; grouped here in its own order.
+const ICON_GROUPS = [...new Set(ICONS.map(i => i.group))].map(g => ({ group: g, icons: ICONS.filter(i => i.group === g) }));
 
 // Loaded once per session from the Mac, for the app and shortcut suggestions.
 const lists: Record<string, Promise<string[]> | undefined> = {};
@@ -394,16 +386,23 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
                     <Text style={st.emojiCell}>{k.icon?.emoji || '😀'}</Text>
                     <Text style={[st.cellLabel, kind === 'emoji' && p.tileLabelOn]}>Emoji</Text>
                   </IconCell>
-                  {SYMBOLS.map(name => (
-                    <IconCell key={name} label={name} on={k.icon?.symbol === name} onPress={() => set({ icon: { symbol: name } })}>
-                      <Symbol name={name} size={20} color={k.icon?.symbol === name ? C.bg : C.text} />
-                    </IconCell>
-                  ))}
                 </View>
                 {kind === 'emoji' && (
                   <Input value={k.icon?.emoji ?? ''} onChangeText={emoji => set({ icon: { emoji } })} placeholder="Type or pick an emoji"
                     style={st.emojiInput} />
                 )}
+                {ICON_GROUPS.map(g => (
+                  <View key={g.group} style={st.iconGroup}>
+                    <Text style={st.typeGroupTitle}>{g.group}</Text>
+                    <View style={st.icons}>
+                      {g.icons.map(i => (
+                        <IconCell key={i.id} label={i.label} on={k.icon?.symbol === i.id} onPress={() => set({ icon: { symbol: i.id } })}>
+                          <Symbol name={i.id} size={20} color={k.icon?.symbol === i.id ? C.bg : C.text} />
+                        </IconCell>
+                      ))}
+                    </View>
+                  </View>
+                ))}
               </Group>
 
               <Group title="Colour">
@@ -495,6 +494,7 @@ const st = StyleSheet.create({
   delay: { width: 76, textAlign: 'center', paddingVertical: 8, marginTop: 0 },
 
   icons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  iconGroup: { gap: 8, marginTop: 16 },
   cell: {
     width: 54,
     height: 54,
