@@ -134,7 +134,7 @@ export function Library({ api, state, style, drag }: {
       <View style={st.search}>
         <Symbol name="magnifyingglass" size={14} color={C.dim} />
         <TextInput value={q} onChangeText={setQ} placeholder="Apps, actions, shortcuts" placeholderTextColor={C.dim}
-          style={st.input} autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" />
+          style={st.input} autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" returnKeyType="done" />
       </View>
       <ScrollView contentContainerStyle={st.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {sections.map(s => (

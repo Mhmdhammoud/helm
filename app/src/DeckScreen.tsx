@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, Keyboard, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -83,6 +83,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   };
 
   const startDrag = (k: Key, from?: string) => {
+    Keyboard.dismiss(); // the library's search keyboard would cover the slots
     rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; org.value = { ...org.value, rx: x, ry: y }; });
     gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; org.value = { ...org.value, gx: x, gy: y }; });
     dragRef.current = { k, from }; // a hold released at once ends before the next render
