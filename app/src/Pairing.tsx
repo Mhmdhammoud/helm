@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, useWindowDimensions, ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -83,14 +83,14 @@ export function Pairing({ macs, onPaired, onSelect, onForget, onClose }: {
 
   return (
     <View style={st.root}>
-      <Backdrop calm={0.6} />
+      <Backdrop />
       {pairing ? (
         <CodeEntry mac={pairing} onPaired={onPaired} onCancel={() => setPairing(null)} />
       ) : (
         <ScrollView contentContainerStyle={st.list}>
           <View style={st.hero}>
             <View>
-              <Text style={st.wordmark}>HELM</Text>
+              <Image source={require('../assets/brand/wordmark-dark.png')} style={st.wordmark} accessibilityLabel="Helm" />
               <Text style={st.tagline}>A Stream Deck for your Macs.</Text>
             </View>
             {onClose && (
@@ -172,8 +172,6 @@ function MacCard({ name, detail, online, cta, busy, onPress, onLongPress }: {
   );
 }
 
-const PANEL_W = 620;
-const PANEL_H = 400;
 
 /** Six digit boxes driven by one hidden field. Shakes on a wrong code, lights up on success. */
 function CodeEntry({ mac, onPaired, onCancel }: { mac: Found; onPaired: (m: Mac) => void; onCancel: () => void }) {
@@ -211,6 +209,7 @@ function CodeEntry({ mac, onPaired, onCancel }: { mac: Found; onPaired: (m: Mac)
     }
   };
 
+  const win = useWindowDimensions();
   const panel = useAnimatedStyle(() => ({ opacity: enter.value, transform: [{ translateY: (1 - enter.value) * 40 }] }));
   const row = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const caretStyle = useAnimatedStyle(() => ({ opacity: caret.value }));
@@ -218,13 +217,14 @@ function CodeEntry({ mac, onPaired, onCancel }: { mac: Found; onPaired: (m: Mac)
 
   return (
     <View style={st.codeRoot}>
+      {/* The whole screen is the pairing surface: the glow runs around the display's edge, as in Hush. */}
+      <PairingGlow active={!done} width={win.width} height={win.height} radius={18} />
       <Animated.View style={[st.panel, panel]}>
-        <PairingGlow active={!done} width={PANEL_W} height={PANEL_H} radius={32} />
-        <Symbol name={done ? 'checkmark.circle.fill' : macSymbol(mac.name)} size={44} weight="light" color={done ? C.ok : C.text} bounce={done ? 1 : 0} />
+        <Symbol name={done ? 'checkmark.circle.fill' : macSymbol(mac.name)} size={56} weight="light" color={done ? C.ok : C.text} bounce={done ? 1 : 0} />
         <Text style={st.codeTitle}>{done ? `Paired with ${mac.name}` : `Pair with ${mac.name}`}</Text>
         <Text style={st.codeSub}>{done ? 'Opening your deck…' : 'Enter the six-digit code shown on the Mac.'}</Text>
 
-        <Pressable onPress={() => input.current?.focus()} accessibilityLabel="Pairing code">
+        <Pressable onPress={() => input.current?.focus()} accessible={false}>
           <Animated.View style={[st.boxes, row]}>
             {Array.from({ length: 6 }, (_, i) => {
               const isActive = !done && !busy && i === active && code.length < 6;
@@ -242,6 +242,8 @@ function CodeEntry({ mac, onPaired, onCancel }: { mac: Found; onPaired: (m: Mac)
           <TextInput
             ref={input}
             style={st.hidden}
+            accessibilityLabel="Pairing code"
+            accessibilityHint="The six digits shown on the Mac"
             value={code}
             onChangeText={t => {
               const c = t.replace(/\D/g, '').slice(0, 6);
@@ -282,7 +284,7 @@ const st = StyleSheet.create({
   pressed: { opacity: 0.6 },
   list: { paddingHorizontal: 64, paddingTop: 56, paddingBottom: 48 },
   hero: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 44 },
-  wordmark: { color: C.text, fontSize: 64, fontWeight: '200', letterSpacing: 22 },
+  wordmark: { width: 216, height: 72, marginLeft: -8 },
   tagline: { color: C.secondary, fontSize: 17, marginTop: 6, letterSpacing: 0.3 },
   done: { ...glass, paddingVertical: 9, paddingHorizontal: 20, borderRadius: 999 },
   doneText: { color: C.text, fontSize: 16, fontWeight: '600' },
@@ -304,15 +306,16 @@ const st = StyleSheet.create({
   error: { color: C.danger, fontSize: 15, marginTop: 8, textAlign: 'center' },
 
   // Top-aligned so the on-screen keyboard never covers the code.
-  codeRoot: { flex: 1, alignItems: 'center', paddingTop: 48 },
-  panel: { ...glass, width: PANEL_W, height: PANEL_H, borderRadius: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
-  codeTitle: { color: C.text, fontSize: 28, fontWeight: '300', marginTop: 12 },
-  codeSub: { color: C.secondary, fontSize: 16, marginTop: 6, marginBottom: 28 },
-  boxes: { flexDirection: 'row', gap: 12 },
+  // Top-biased so the on-screen keyboard never covers the boxes.
+  codeRoot: { ...StyleSheet.absoluteFillObject, alignItems: 'center', paddingTop: 120 },
+  panel: { alignItems: 'center', paddingHorizontal: 40 },
+  codeTitle: { color: C.text, fontSize: 40, fontWeight: '200', marginTop: 18 },
+  codeSub: { color: C.secondary, fontSize: 18, marginTop: 8, marginBottom: 40 },
+  boxes: { flexDirection: 'row', gap: 16 },
   box: {
-    width: 64,
-    height: 80,
-    borderRadius: 16,
+    width: 84,
+    height: 108,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -321,10 +324,11 @@ const st = StyleSheet.create({
   },
   boxActive: { borderColor: C.silver, shadowColor: '#ffffff', shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } },
   boxDone: { backgroundColor: C.silver, borderColor: C.silver },
-  digit: { color: C.text, fontSize: 40, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  digit: { color: C.text, fontSize: 54, fontWeight: '300', fontVariant: ['tabular-nums'] },
   digitDone: { color: C.bg },
-  caret: { width: 2, height: 36, borderRadius: 1, backgroundColor: C.silver },
-  hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+  caret: { width: 2, height: 48, borderRadius: 1, backgroundColor: C.silver },
+  // Laid over the boxes (invisible) so taps and VoiceOver land on a real text field.
+  hidden: { ...StyleSheet.absoluteFillObject, color: 'transparent', opacity: 0.02 },
   status: { height: 44, justifyContent: 'center', marginTop: 12 },
   cancel: { marginTop: 24, paddingVertical: 8, paddingHorizontal: 18 },
   cancelText: { color: C.silver, fontSize: 17 },

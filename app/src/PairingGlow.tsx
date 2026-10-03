@@ -19,6 +19,7 @@ float sdRoundBox(float2 p, float2 b, float r) {
 half4 main(float2 xy) {
   float2 c = res * 0.5;
   float d = -sdRoundBox(xy - c, c - 1.0, radius); // distance inside the edge, 0 at the rim
+  if (d < 0.0) return half4(0.0);                   // outside the rounded corners: nothing
   float rim = exp(-d * 0.07);                       // soft inner glow
   float line = exp(-d * 0.9);                       // crisp edge line
 
