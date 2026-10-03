@@ -1,5 +1,6 @@
 // Live Mac info for keys (now playing, CPU, memory, battery) and the running-apps page.
 // Everything is sampled lazily when an iPad asks, at most every 2s, and only for sources the deck uses.
+import { makeOsa } from './runner.js';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, rmSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
@@ -61,6 +62,9 @@ export function macBattery(pmset) {
 }
 
 export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date.now }) {
+  // Its own long-lived osascript for the now-playing poll, so a slow Music/Spotify query never queues
+  // behind (or delays) a key press on the actions runner. Tests with a recording exec see one-shot calls.
+  const osa = exec === realExec ? makeOsa({ exec }) : (script, args = []) => exec('osascript', ['-e', script, ...args]);
   const artFile = join(supportDir, 'artwork.png');
   let cache = null; // { at, key, promise }
   let prevCpu = []; // first sample: average since boot
@@ -88,7 +92,7 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     const running = new Set((await exec('ps', ['-axco', 'comm'])).split('\n').map(s => s.trim()));
     let best = null;
     for (const app of Object.keys(PLAYERS).filter(a => running.has(a))) {
-      const out = await exec('osascript', ['-e', PLAYERS[app]], 5000).catch(() => '');
+      const out = await osa(PLAYERS[app]).catch(() => '');
       const [state, title, artist, id, url] = out.split('\t');
       if (!title) continue;
       const t = { app, title, artist: artist || null, playing: state === 'playing', id, url };
