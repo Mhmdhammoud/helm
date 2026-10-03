@@ -20,12 +20,9 @@ const SECTIONS: { title: string; keys: Key[] }[] = [
       k('Clock', { type: 'open', target: 'Clock' }, { icon: { symbol: 'clock' }, live: 'clock', span: { w: 2, h: 1 } }),
       k('Weather', { type: 'open', target: 'Weather' }, { icon: { symbol: 'cloud-sun' }, live: 'weather', span: { w: 2, h: 1 } }),
       k('System', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'gauge' }, live: 'system', span: { w: 2, h: 1 } }),
-      k('System', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'gauge' }, live: 'system', span: { w: 2, h: 2 } }),
-      k('Now playing', { type: 'media', key: 'play' }, { icon: { symbol: 'helm:now-playing' }, live: 'nowplaying', span: { w: 2, h: 2 }, hold: { type: 'media', key: 'next' } }),
-      k('Weather', { type: 'open', target: 'Weather' }, { icon: { symbol: 'cloud-sun' }, live: 'weather', span: { w: 2, h: 2 } }),
+      k('Now playing', { type: 'media', key: 'play' }, { icon: { symbol: 'helm:now-playing' }, live: 'nowplaying', span: { w: 2, h: 1 }, hold: { type: 'media', key: 'next' } }),
       k('Storage', { type: 'open', target: 'x-apple.systempreferences:com.apple.settings.Storage' }, { icon: { symbol: 'hard-drive' }, live: 'storage', span: { w: 2, h: 1 } }),
       k('Thermals', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'thermometer' }, live: 'thermal', span: { w: 2, h: 1 } }),
-      k('Storage', { type: 'open', target: 'x-apple.systempreferences:com.apple.settings.Storage' }, { icon: { symbol: 'hard-drive' }, live: 'storage', span: { w: 3, h: 1 } }),
     ],
   },
   {

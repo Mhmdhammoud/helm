@@ -115,12 +115,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   // Gesture handlers for a draggable key (a grid key in edit mode, or a library key when `from` is unset).
   // Keys skip re-rendering when nothing they show changed (KeyTile is memoised), so their handlers must never
   // hold an old render's deck: each slot gets stable handlers that call this render's functions.
-  const latest = useRef({ press: (_: string) => {}, longPress: (_: string) => {}, remove: (_: string) => {}, drop: (_s: string | null, _x?: number, _y?: number) => {} });
-  const perSlot = useRef<Record<string, { press: () => void; longPress: () => void; remove: () => void }>>({});
+  const latest = useRef({ press: (_: string) => {}, longPress: (_: string) => {}, remove: (_: string) => {}, resize: (_s: string, _w: number, _h: number) => {}, drop: (_s: string | null, _x?: number, _y?: number) => {} });
+  const perSlot = useRef<Record<string, { press: () => void; longPress: () => void; remove: () => void; resize: (w: number, h: number) => void }>>({});
   const handlers = (slot: string) => (perSlot.current[slot] ??= {
     press: () => latest.current.press(slot),
     longPress: () => latest.current.longPress(slot),
     remove: () => latest.current.remove(slot),
+    resize: (w: number, h: number) => latest.current.resize(slot, w, h),
   });
 
   // Follows the finger on the UI thread: moves the floating key and marks the slot under it.
@@ -215,6 +216,14 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       if (!editing) k?.hold ? fire(k, k.hold, `${page.id}/${slot}`, `${page.id}/${slot}:hold`) : setEditing(true);
     },
     remove: slot => setKey(slot, null),
+    // Resizing is a drop in place with the new size: whatever the bigger key now covers moves aside.
+    resize: (slot, w, h) => {
+      const k = page.keys[slot];
+      if (!k || (spanOf(k).w === w && spanOf(k).h === h)) return;
+      const keys = place(page.keys, cols, rows, { ...k, span: w === 1 && h === 1 ? undefined : { w, h } }, slot, slot);
+      if (!keys) return setFlash(`No room for ${w}×${h} there.`);
+      updatePage({ keys });
+    },
     drop,
   };
   const gap = 16;
@@ -328,7 +337,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                     <KeyTile id={slotId} k={k} size={size} width={w * size + (w - 1) * gap} height={h * size + (h - 1) * gap} api={api} state={state}
                       editing={editing && !drag} picked={false} hover={lifted ? undefined : hover} index={i} feedback={feedback[slotId]}
                       drag={editing && k && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
-                      onPress={handlers(slot).press} onLongPress={handlers(slot).longPress} onRemove={page.keys[slot] ? handlers(slot).remove : undefined} />
+                      onPress={handlers(slot).press} onLongPress={handlers(slot).longPress} onRemove={page.keys[slot] ? handlers(slot).remove : undefined}
+                      onResize={page.keys[slot] ? handlers(slot).resize : undefined} gap={gap} />
                   </View>
                 );
               })}

@@ -107,7 +107,7 @@ export type DragProps = {
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, hover, index, feedback, drag, titles = false, onPress, onLongPress, onRemove }: {
+function KeyTileImpl({ k, id, size, width, height, gap = 0, api, state, editing, picked, hover, index, feedback, drag, titles = false, onPress, onLongPress, onRemove, onResize }: {
   k?: Key;
   id: string;
   /** One slot's size; `width`/`height` (default `size`) are the key's own, larger for widgets. */
@@ -130,6 +130,9 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
   onLongPress: () => void;
   /** Edit mode: the "−" badge, like the iOS home screen. */
   onRemove?: () => void;
+  /** Edit mode: a corner handle that resizes the key to whole slots (w × h). `gap` is the space between slots. */
+  onResize?: (w: number, h: number) => void;
+  gap?: number;
 }) {
   useMinuteTick(k?.live === 'clock');
   const live: LiveView = k ? liveView(k, state, id) : {};
@@ -173,12 +176,47 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
 
   const dragRef = useRef(drag);
   dragRef.current = drag;
+  // Resize: the outline follows the handle on the UI thread and snaps to whole slots; React hears the result.
+  const grow = useSharedValue({ w: 0, h: 0 });
+  const resizing = useSharedValue(0);
+  const resized = (w: number, h: number) => onResize?.(w, h);
+  const cell = size + gap;
+  const resizePan = usePanGesture({
+    enabled: !!onResize,
+    minDistance: 4,
+    onActivate: () => { 'worklet'; resizing.value = 1; },
+    onUpdate: e => {
+      'worklet';
+      // The outline snaps to whole slots, so it shows exactly the size the key will take.
+      const w = Math.min(4, Math.max(1, Math.round((W + e.translationX + gap) / cell)));
+      const h = Math.min(3, Math.max(1, Math.round((H + e.translationY + gap) / cell)));
+      grow.value = { w: w * cell - gap - W, h: h * cell - gap - H };
+    },
+    onDeactivate: e => {
+      'worklet';
+      const w = Math.min(4, Math.max(1, Math.round((W + e.translationX + gap) / cell)));
+      const h = Math.min(3, Math.max(1, Math.round((H + e.translationY + gap) / cell)));
+      grow.value = { w: 0, h: 0 };
+      scheduleOnRN(resized, w, h);
+    },
+    onFinalize: () => {
+      'worklet';
+      resizing.value = 0;
+      grow.value = { w: 0, h: 0 };
+    },
+  });
+  const ghost = useAnimatedStyle(() => ({
+    width: withSpring(W + grow.value.w, SPRING), height: withSpring(H + grow.value.h, SPRING),
+    opacity: withTiming(resizing.value, { duration: 120 }),
+  }));
+
   // Pick-up and drop go to React; every movement in between stays on the UI thread.
   const start = (x: number, y: number) => dragRef.current?.onStart(x, y);
   const end = (x: number, y: number, canceled: boolean) => dragRef.current?.onEnd(x, y, canceled);
   const move = drag?.move;
   const pan = usePanGesture({
     enabled: !!drag,
+    requireToFail: resizePan, // a touch on the resize handle never turns into moving the key
     activateAfterLongPress: drag?.holdMs ?? 300,
     onActivate: e => {
       'worklet';
@@ -198,12 +236,18 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
   const lit = live.on;
   const tint = k?.color;
   const glyph = lit ? C.bg : live.alert ? C.danger : C.text;
-  const iconSize = size * (titles || live.sub ? 0.3 : 0.4);
+  // A bigger key that isn't a widget just shows its face bigger.
+  const S = widget ? size : Math.min(W, H);
+  const iconSize = S * (titles || live.sub ? 0.3 : 0.4);
   const level = live.level;
 
+  // The handle and the − badge are siblings of the key's button, not inside it: the button would hold on to
+  // the touch, and the handle's drag never got its end.
   return (
+    <Animated.View style={[{ width: W, height: H }, body]}>
     <GestureDetector gesture={pan}>
     <Pressable
+      style={StyleSheet.absoluteFill}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={!editing && k?.hold ? 500 : 350}
@@ -213,7 +257,7 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
       accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}
       accessibilityActions={editing && k && onRemove ? [{ name: 'remove', label: 'Remove' }] : undefined}
       onAccessibilityAction={e => e.nativeEvent.actionName === 'remove' && onRemove?.()}>
-      <Animated.View style={[{ width: W, height: H }, body]}>
+      <View style={{ width: W, height: H }}>
         {/* Plain views, not Skia: a page of keys (and the library's dozens) appears at once instead of canvas by canvas. */}
         {k && appOnly ? null : k ? (
           <>
@@ -251,26 +295,26 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
             <WidgetFace k={k} state={state} api={api} width={W} height={H} unit={size} />
           </View>
         )}
-        <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: size * 0.08 }, level != null && { paddingBottom: size * 0.2 }]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: S * 0.08 }, level != null && { paddingBottom: S * 0.2 }]} pointerEvents="none">
           {widget ? null : appOnly && k?.icon?.app ? (
             // macOS icons leave ~10% transparent margin around the shape; scale past it so the shape meets the key's edges.
-            <Image source={api.icon(k.icon.app)} style={{ width: W * 1.2, height: H * 1.2 }} />
+            <Image source={api.icon(k.icon.app)} style={{ width: S * 1.2, height: S * 1.2 }} />
           ) : k ? (
             <>
               {live.face ? (
-                <Text style={[st.face, { color: glyph, fontSize: size * 0.24 }]} numberOfLines={1} adjustsFontSizeToFit>{live.face}</Text>
+                <Text style={[st.face, { color: glyph, fontSize: S * 0.24 }]} numberOfLines={1} adjustsFontSizeToFit>{live.face}</Text>
               ) : live.art ? null : k.icon?.app ? (
-                <Image source={api.icon(k.icon.app)} style={{ width: size * 0.42, height: size * 0.42 }} />
+                <Image source={api.icon(k.icon.app)} style={{ width: S * 0.42, height: S * 0.42 }} />
               ) : k.icon?.symbol || !k.icon?.emoji ? (
                 <Symbol name={k.icon?.symbol ?? defaultSymbol(k.action, state?.mac)} size={iconSize} weight="medium" color={glyph} bounce={feedback?.n ?? 0} />
               ) : (
                 <Text style={{ fontSize: iconSize * 1.1 }}>{k.icon.emoji}</Text>
               )}
               {!!(live.title ?? (titles ? k.title : undefined)) && (
-                <Text style={[st.title, { color: lit ? C.bg : C.text, fontSize: Math.max(12, size * 0.105) }]} numberOfLines={1}>{live.title ?? k.title}</Text>
+                <Text style={[st.title, { color: lit ? C.bg : C.text, fontSize: Math.max(12, S * 0.105) }]} numberOfLines={1}>{live.title ?? k.title}</Text>
               )}
               {live.sub && (
-                <Text style={[st.sub, { color: lit ? '#3a3f46' : live.alert ? C.danger : C.dim, fontSize: Math.max(11, size * 0.085) }]} numberOfLines={1}>
+                <Text style={[st.sub, { color: lit ? '#3a3f46' : live.alert ? C.danger : C.dim, fontSize: Math.max(11, S * 0.085) }]} numberOfLines={1}>
                   {live.sub}
                 </Text>
               )}
@@ -279,15 +323,24 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
             editing && <Symbol name="plus" size={size * 0.18} weight="light" color={C.dim} />
           )}
         </View>
-        {editing && k && onRemove && (
-          <Pressable onPress={onRemove} hitSlop={10} style={[st.badge, { left: -size * 0.06, top: -size * 0.06 }]}
-            accessibilityRole="button" accessibilityLabel={`Remove ${k.title ?? 'key'}`}>
-            <View style={st.badgeBar} />
-          </Pressable>
-        )}
-      </Animated.View>
+      </View>
     </Pressable>
     </GestureDetector>
+    <Animated.View pointerEvents="none" style={[st.ghost, { borderRadius: radius }, ghost]} />
+    {editing && k && onResize && (
+      // Like an iOS widget: a thin arc hugging the bottom-right corner, with a generous touch area.
+      <GestureDetector gesture={resizePan}>
+        <View hitSlop={14} style={[st.handle, { width: radius * 1.6, height: radius * 1.6, borderBottomRightRadius: radius }]}
+          accessibilityRole="adjustable" accessibilityLabel={`Resize ${k.title ?? 'key'}`} />
+      </GestureDetector>
+    )}
+    {editing && k && onRemove && (
+      <Pressable onPress={onRemove} hitSlop={10} style={[st.badge, { left: -size * 0.06, top: -size * 0.06 }]}
+        accessibilityRole="button" accessibilityLabel={`Remove ${k.title ?? 'key'}`}>
+        <View style={st.badgeBar} />
+      </Pressable>
+    )}
+    </Animated.View>
   );
 }
 
@@ -310,6 +363,7 @@ const same = (a: TileProps, b: TileProps) =>
   a.k === b.k && a.id === b.id && a.size === b.size && a.width === b.width && a.height === b.height && a.api === b.api &&
   a.editing === b.editing && a.picked === b.picked && a.hover === b.hover && a.index === b.index && a.titles === b.titles &&
   a.feedback === b.feedback && !!a.drag === !!b.drag && a.drag?.holdMs === b.drag?.holdMs && !!a.onRemove === !!b.onRemove &&
+  !!a.onResize === !!b.onResize && a.gap === b.gap &&
   shown(a.k, a.state, a.id) === shown(b.k, b.state, b.id);
 
 /** One Stream Deck key (memoised: live updates only redraw the keys whose reading changed). */
@@ -324,6 +378,8 @@ const st = StyleSheet.create({
   title: { fontWeight: '600', marginTop: 4, letterSpacing: 0.2 },
   sub: { fontWeight: '500', fontVariant: ['tabular-nums'] },
   plate: { shadowColor: '#000', shadowOpacity: 0.65 },
+  ghost: { position: 'absolute', left: 0, top: 0, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(217,221,227,0.8)', backgroundColor: 'rgba(217,221,227,0.06)' },
+  handle: { position: 'absolute', right: -3, bottom: -3, borderRightWidth: 3.5, borderBottomWidth: 3.5, borderColor: 'rgba(217,221,227,0.85)' },
   badge: { position: 'absolute', width: 26, height: 26, borderRadius: 13, backgroundColor: '#5b5f66', alignItems: 'center', justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.3)' },
   badgeBar: { width: 11, height: 2.5, borderRadius: 1.25, backgroundColor: '#fff' },

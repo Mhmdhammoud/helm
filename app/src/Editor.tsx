@@ -8,7 +8,6 @@ import { ICONS, Symbol, defaultSymbol } from './Symbol';
 import type { State, Action, ActionType, Key, Live, Mod, Page } from './types';
 import { C, SPRING } from './theme';
 import { spanOf } from './grid';
-import { WIDGET_LIVE } from './Widget';
 import { Advanced, Heading, IconTile, Input, Keycap, MODS, NAMED_KEYS, Options, Segmented, Suggest, Swatches, capFor, st as p } from './EditorParts';
 
 type TypeDef = { type: ActionType; label: string; symbol: string; make: (pages: Page[]) => Action };
@@ -475,13 +474,13 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                 <Text style={st.note}>Shows a live reading on the key.</Text>
               </Group>
 
-              {(WIDGET_LIVE as readonly string[]).includes(k.live ?? '') && (
+              {(
                 <Group title="Size">
                   <Segmented items={SIZES} value={`${spanOf(k).w}x${spanOf(k).h}`} onChange={v => {
                     const [w, h] = v.split('x').map(Number);
                     set({ span: w === 1 && h === 1 ? undefined : { w, h } });
                   }} />
-                  <Text style={st.note}>Bigger keys become widgets. They need free slots to the right and below.</Text>
+                  <Text style={st.note}>Live readings like weather and storage get a widget face when bigger. Other keys move aside to make room.</Text>
                 </Group>
               )}
               {k.live === 'weather' && (
