@@ -9,7 +9,7 @@ export const ACTION_TYPES = [
   'hotkey', 'open', 'text', 'media', 'volume', 'shortcut', 'script', 'mic', 'system',
   'hush', 'page', 'back', 'app', 'multi', 'toggle',
 ];
-export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle'];
+export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock'];
 
 const key = (title, action, extra = {}) => ({ title, action, ...extra });
 
@@ -84,8 +84,10 @@ export function validateDeck(d) {
   for (const p of d.pages) {
     if (typeof p.id !== 'string' || !p.id || ids.has(p.id)) throw new BadRequest('page ids must be unique strings');
     ids.add(p.id);
+    if (p.kind != null && p.kind !== 'running') throw new BadRequest(`${p.id}: unknown page kind`);
     for (const [slot, k] of Object.entries(p.keys ?? {})) {
       checkAction(k?.action, `${p.id}[${slot}]`);
+      if (k.hold != null) checkAction(k.hold, `${p.id}[${slot}].hold`);
       if (k.live && !LIVE.includes(k.live)) throw new BadRequest(`${p.id}[${slot}]: unknown live source`);
     }
   }

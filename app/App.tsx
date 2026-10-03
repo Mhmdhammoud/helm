@@ -9,6 +9,7 @@ import { Backdrop } from './src/Backdrop';
 import { DeckScreen } from './src/DeckScreen';
 import { HushPanel } from './src/HushPanel';
 import { Pairing } from './src/Pairing';
+import { Splash } from './src/Splash';
 import type { Deck } from './src/types';
 import { C } from './src/theme';
 
@@ -68,6 +69,7 @@ export default function App() {
       <StatusBar hidden />
       <Backdrop />
       {screen}
+      <Splash ready={macs.loaded && (!macs.current || !!deck || !!deckError)} />
     </View>
   );
 }

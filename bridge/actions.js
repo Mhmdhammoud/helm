@@ -18,7 +18,8 @@ const KEY_CODES = {
   f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97, f7: 98, f8: 100, f9: 101, f10: 109, f11: 103, f12: 111,
 };
 const MODS = { cmd: 'command down', shift: 'shift down', opt: 'option down', alt: 'option down', ctrl: 'control down' };
-const MEDIA = { play: 16, next: 17, previous: 18 };
+// NX_KEYTYPE_* codes. Brightness keys only reach built-in and Apple displays; macOS can't dim third-party monitors.
+const MEDIA = { play: 16, next: 17, previous: 18, 'brightness-up': 2, 'brightness-down': 3 };
 const HUSH = {
   anc: /^(10|[0-9]|up|down|cycle)$/,
   eq: /^(flat|(bass|mid|treble)\/-?(10|[0-9]))$/,
@@ -81,7 +82,7 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
       case 'text':
         return osa(exec, PASTE, String(a.text ?? ''));
       case 'media':
-        if (!(a.key in MEDIA)) throw new BadRequest(`unknown media key: ${a.key}`);
+        if (!Object.hasOwn(MEDIA, a.key)) throw new BadRequest(`unknown media key: ${a.key}`);
         return mediaKey(a.key);
       case 'volume':
         if (a.mute === 'toggle') return osa(exec, 'set volume output muted (not (output muted of (get volume settings)))');
@@ -154,7 +155,7 @@ export function listApps() {
 const ICON = `ObjC.import('AppKit');
 function run(argv) {
   const ws = $.NSWorkspace.sharedWorkspace;
-  const path = ws.fullPathForApplication(argv[0]);
+  const path = argv[0].startsWith('/') ? $(argv[0]) : ws.fullPathForApplication(argv[0]);
   if (!path || !path.js) throw new Error('no such app');
   const img = ws.iconForFile(path);
   const S = 256;
@@ -166,9 +167,9 @@ function run(argv) {
   rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $()).writeToFileAtomically(argv[1], true);
 }`;
 
-/** Path to a cached 256px PNG of an app's icon, rendering it on first request. */
+/** Path to a cached 256px PNG of an app's icon (by name or .app path), rendering it on first request. */
 export async function appIcon(name, supportDir, exec = realExec) {
-  const safe = String(name).replace(/[^\w .+-]/g, '_').slice(0, 80);
+  const safe = String(name).replace(/^\/.*\/|\.app$/g, '').replace(/[^\w .+-]/g, '_').slice(0, 80);
   const file = join(supportDir, 'icons', `${safe}.png`);
   if (!existsSync(file)) {
     mkdirSync(join(supportDir, 'icons'), { recursive: true });

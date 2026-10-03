@@ -45,4 +45,13 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
   }
+
+  // Match the launch screen (#0b0c0e) and keep its mark up until JS draws, so there's no white flash.
+  override func customize(_ rootView: RCTRootView) {
+    super.customize(rootView)
+    rootView.backgroundColor = UIColor(red: 11 / 255, green: 12 / 255, blue: 14 / 255, alpha: 1)
+    if let launch = UIStoryboard(name: "LaunchScreen", bundle: nil).instantiateInitialViewController()?.view {
+      rootView.loadingView = launch
+    }
+  }
 }

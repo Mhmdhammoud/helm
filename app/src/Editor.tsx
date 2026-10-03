@@ -69,6 +69,11 @@ const LIVES: { value: Live | undefined; label: string }[] = [
   { value: 'battery', label: 'Headphone battery' },
   { value: 'anc', label: 'Noise cancelling' },
   { value: 'toggle', label: 'Toggle state' },
+  { value: 'nowplaying', label: 'Now playing' },
+  { value: 'clock', label: 'Clock' },
+  { value: 'cpu', label: 'CPU' },
+  { value: 'memory', label: 'Memory' },
+  { value: 'macbattery', label: 'Mac battery' },
 ];
 
 // Curated glyphs: media, system, apps, communication, dev, home, arrows.
@@ -147,6 +152,8 @@ export function ActionForm({ action, onChange, api, pages, nested }: {
             { value: 'previous', label: 'Previous', symbol: 'backward.fill' },
             { value: 'play', label: 'Play / pause', symbol: 'playpause.fill' },
             { value: 'next', label: 'Next', symbol: 'forward.fill' },
+            { value: 'brightness-down', label: 'Dimmer', symbol: 'sun.min.fill' },
+            { value: 'brightness-up', label: 'Brighter', symbol: 'sun.max.fill' },
           ]} />
         </Group>
       )}
@@ -404,7 +411,9 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
               </Group>
 
               <Group title="Live status">
-                <Segmented items={LIVES} value={k.live} onChange={live => set({ live })} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <Segmented items={LIVES} value={k.live} onChange={live => set({ live })} />
+                </ScrollView>
                 <Text style={st.note}>Shows a reading under the title, updated every second.</Text>
               </Group>
             </ScrollView>

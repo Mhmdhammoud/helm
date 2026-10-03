@@ -72,7 +72,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
     };
     flush();
   };
-  useEffect(() => () => { clearTimeout(timer.current); clearTimeout(settle.current); }, []);
+  useEffect(() => () => { timer.current && clearTimeout(timer.current); settle.current && clearTimeout(settle.current); }, []);
 
   /** Set the continuous position; a whole-step crossing is a detent. */
   const moveTo = (v: number, animate: boolean) => {
@@ -90,7 +90,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   const release = () => {
     touching.current = false;
     busyUntil.current = Date.now() + SETTLE_MS;
-    clearTimeout(settle.current);
+    settle.current && clearTimeout(settle.current);
     settle.current = setTimeout(sync, SETTLE_MS);
   };
   const act = useRef({ moveTo, release });
@@ -107,7 +107,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
         const { pageX, pageY, locationX, locationY } = e.nativeEvent;
         const L = live.current;
         touching.current = true;
-        clearTimeout(settle.current);
+        settle.current && clearTimeout(settle.current);
         cx = pageX - locationX + L.c;
         cy = pageY - locationY + L.c;
         mode = Math.hypot(locationX - L.c, locationY - L.c) > L.bodyR * 0.85 ? 'turn' : 'slide';

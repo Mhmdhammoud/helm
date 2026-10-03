@@ -32,7 +32,15 @@ as with any Stream Deck, so pair only your own devices.
 - **Actions**: open app/file/URL, hotkey, type text, media (play/pause, next, previous), volume,
   mic mute, macOS Shortcut, shell script, system (lock, sleep display, screensaver), Hush command,
   Hush panel, go to page, back, multi action (steps with a delay), toggle (alternates two actions).
-- **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state.
+- **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state, now playing (Music
+  or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
+  Mac battery ("AC" on Macs without one). Mac readings are taken only while an iPad is watching.
+- **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
+- **Running apps page**: a page with `"kind": "running"` fills itself with the Mac's open apps; tap one
+  to bring it to the front.
+- **Brightness**: media keys Brighter / Dimmer. They reach built-in and Apple displays only; macOS
+  can't dim third-party monitors. **Focus / Do Not Disturb**: make a Shortcut named "Toggle Focus"
+  (Shortcuts app → Set Focus → Do Not Disturb, Toggle) and put it on a Shortcut key.
 - **Pages and profiles**: long-press a page tab (in Edit) to rename, delete or bind it to an app.
   A bound page (⚡︎) opens while that app is in front on the Mac, and closes when it isn't.
 - **Dials**: Mac volume and noise cancelling, Stream Deck+ style.
@@ -47,10 +55,23 @@ open Helm.xcworkspace   # pick your team and the iPad; Release bundles the JS (n
 
 ## Bridge API
 
-Unauthenticated: `GET /hello`, `POST /pair/start`, `POST /pair {code, device}` → `{token}`.
+Unauthenticated: `GET /hello` → `{app, name, id}`, `POST /pair/start`, `POST /pair {code, device}` → `{token, name, id}`.
+`id` is the bridge's stable random id (`id` file in the state folder); the iPad uses it to find a paired Mac
+again over Bonjour when its address changes.
 With `Authorization: Bearer <token>`: `GET /deck`, `PUT /deck`, `POST /run {action, id}`,
-`GET /state`, `GET /apps`, `GET /shortcuts`, `GET /icon?app=Name` (PNG).
-State: `~/Library/Application Support/Helm/` (`deck.json`, `tokens.json` with hashed tokens,
+`GET /state`, `GET /apps`, `GET /shortcuts`, `GET /icon?app=Name|/path/To.app` (PNG), `GET /running`
+(`[{name, path}]`), `GET /artwork` (current track's PNG).
+
+`POST /run` answers when the action finishes or after 250ms, whichever comes first (`{ok, pending: true}` in
+the second case). Slow actions (shortcuts, scripts) finish in the background and their effect arrives on `/live`.
+
+Live state: WebSocket `GET /live` (same port, same bearer header). The first message is the full state,
+`{"t":"state","state":{mac, headphones, toggles, …}}`. After that a key is sent again only when it changes
+(`{"t":"state","state":{"mac":{…}}}`, merge it into what you have), right after each key press, and with
+`{"t":"hb"}` plus a ping every 5s. Volume and mic changes arrive within ~100ms; everything else is polled
+every second, and only while an iPad is connected. Close code 4001 means the iPad was unpaired.
+`GET /state` still returns the full state in one request.
+State: `~/Library/Application Support/Helm/` (`deck.json`, `tokens.json` with hashed tokens, `id`,
 `icons/`, `bin/mediakey`).
 
 ## Test

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Canvas, DashPathEffect, Group, LinearGradient, Path, RoundedRect, Shadow, Skia, vec } from 'react-native-skia';
 import Animated, {
@@ -16,7 +16,9 @@ import { Symbol, defaultSymbol } from './Symbol';
 import type { Key, State } from './types';
 import { C, SPRING } from './theme';
 
-type LiveView = { sub?: string; on?: boolean; alert?: boolean; level?: number };
+/** `title` replaces the key's title, `face` replaces its icon with big text, `art` is a GET /artwork version shown behind it. */
+type LiveView = { sub?: string; on?: boolean; alert?: boolean; level?: number; title?: string; face?: string; art?: string };
+const gauge = (n: number | undefined) => (n == null ? {} : { sub: `${n}%`, level: n / 100, alert: n >= 90 });
 
 /** What a live key shows right now: a status line, a gauge level, and whether it's lit. */
 export function liveView(k: Key, state: State | null, id: string): LiveView {
@@ -36,9 +38,40 @@ export function liveView(k: Key, state: State | null, id: string): LiveView {
       return online && hp.anc ? { sub: `Noise ${hp.anc.level}`, level: hp.anc.level / 10 } : { sub: hp ? 'Offline' : undefined };
     case 'toggle':
       return { on: !!state?.toggles?.[id] };
+    case 'nowplaying': {
+      const np = state?.nowPlaying;
+      if (!np) return { sub: state ? 'Nothing playing' : undefined };
+      return { title: np.title, sub: np.playing ? (np.artist ?? np.app) : `Paused${np.artist ? ` · ${np.artist}` : ''}`, art: np.art ?? undefined };
+    }
+    case 'cpu':
+      return gauge(state?.cpu);
+    case 'memory':
+      return gauge(state?.memory);
+    case 'macbattery': {
+      const b = state?.macBattery;
+      if (!b) return {};
+      if (b.percent == null) return { sub: 'AC' };
+      return { sub: `${b.percent}%${b.charging ? ' ⚡︎' : ''}`, level: b.percent / 100, alert: b.percent <= 20 && !b.charging };
+    }
+    case 'clock': {
+      const now = new Date();
+      return { face: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), sub: now.toLocaleDateString([], { weekday: 'short', day: 'numeric' }) };
+    }
     default:
       return {};
   }
+}
+
+/** Re-renders at each minute boundary while `on`, so clock keys tick without the bridge. */
+function useMinuteTick(on: boolean) {
+  const [, setT] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    let t: ReturnType<typeof setTimeout>;
+    const next = () => { t = setTimeout(() => { setT(n => n + 1); next(); }, 60_000 - (Date.now() % 60_000) + 50); };
+    next();
+    return () => clearTimeout(t);
+  }, [on]);
 }
 
 /** Result of the last press, so the key can flash: `n` changes on every press. */
@@ -57,7 +90,8 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
   onPress: () => void;
   onLongPress: () => void;
 }) {
-  const live = k ? liveView(k, state, id) : {};
+  useMinuteTick(k?.live === 'clock');
+  const live: LiveView = k ? liveView(k, state, id) : {};
   const radius = size * 0.22;
   const press = useSharedValue(0);
   const wiggle = useSharedValue(0);
@@ -105,11 +139,11 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={350}
+      delayLongPress={!editing && k?.hold ? 500 : 350}
       onPressIn={() => { press.value = withSpring(1, SPRING); }}
       onPressOut={() => { press.value = withSpring(0, SPRING); }}
       accessibilityRole="button"
-      accessibilityLabel={k ? [k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}>
+      accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}>
       <Animated.View style={[{ width: size, height: size }, body]}>
         <Canvas style={canvas}>
           <Group transform={[{ translateX: pad }, { translateY: pad }]}>
@@ -146,6 +180,13 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
           </Group>
         </Canvas>
 
+        {live.art && (
+          <View style={[st.art, { width: size - 4, height: size - 4, borderRadius: radius - 1 }]} pointerEvents="none">
+            <Image source={api.artwork(live.art)} style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, st.artShade]} />
+          </View>
+        )}
+
         <Animated.View style={[StyleSheet.absoluteFill, ring]} pointerEvents="none">
           <Canvas style={canvas}>
             <Group transform={[{ translateX: pad }, { translateY: pad }]}>
@@ -156,18 +197,20 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
           </Canvas>
         </Animated.View>
 
-        <View style={[StyleSheet.absoluteFill, st.content, { padding: size * 0.08 }]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: size * 0.08 }]} pointerEvents="none">
           {k ? (
             <>
-              {k.icon?.app ? (
+              {live.face ? (
+                <Text style={[st.face, { color: glyph, fontSize: size * 0.24 }]} numberOfLines={1} adjustsFontSizeToFit>{live.face}</Text>
+              ) : live.art ? null : k.icon?.app ? (
                 <Image source={api.icon(k.icon.app)} style={{ width: size * 0.42, height: size * 0.42 }} />
               ) : k.icon?.symbol || !k.icon?.emoji ? (
                 <Symbol name={k.icon?.symbol ?? defaultSymbol(k.action, state?.mac)} size={iconSize} weight="medium" color={glyph} bounce={feedback?.n ?? 0} />
               ) : (
                 <Text style={{ fontSize: iconSize * 1.1 }}>{k.icon.emoji}</Text>
               )}
-              {!!k.title && (
-                <Text style={[st.title, { color: lit ? C.bg : C.text, fontSize: Math.max(12, size * 0.105) }]} numberOfLines={1}>{k.title}</Text>
+              {!!(live.title ?? k.title) && (
+                <Text style={[st.title, { color: lit ? C.bg : C.text, fontSize: Math.max(12, size * 0.105) }]} numberOfLines={1}>{live.title ?? k.title}</Text>
               )}
               {live.sub && (
                 <Text style={[st.sub, { color: lit ? '#3a3f46' : live.alert ? C.danger : C.dim, fontSize: Math.max(11, size * 0.085) }]} numberOfLines={1}>
@@ -186,6 +229,10 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
 
 const st = StyleSheet.create({
   content: { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  contentArt: { justifyContent: 'flex-end' },
+  art: { position: 'absolute', left: 2, top: 2, overflow: 'hidden' },
+  artShade: { experimental_backgroundImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.85) 100%)' },
+  face: { fontWeight: '600', fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
   title: { fontWeight: '600', marginTop: 4, letterSpacing: 0.2 },
   sub: { fontWeight: '500', fontVariant: ['tabular-nums'] },
 });
