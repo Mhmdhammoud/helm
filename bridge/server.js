@@ -90,7 +90,7 @@ function watchVolume(onChange) {
 
 export function serve({
   port = PORT, exec = realExec, hushState = HUSH_STATE, supportDir = SUPPORT, name = 'Mac',
-  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now,
+  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now, notifier = process.env.HELM_NOTIFIER,
 } = {}) {
   const deckFile = join(supportDir, 'deck.json');
   const tokensFile = join(supportDir, 'tokens.json');
@@ -111,6 +111,12 @@ export function serve({
     return fails.length >= 15;
   };
   const lockedError = () => new BadRequest('too many wrong codes; pairing is paused for 15 minutes');
+  // Through the Helm Bridge app when running as the login item (Helm's name and icon), else AppleScript.
+  // Not awaited: the first time, Helm Bridge waits for the user to allow notifications.
+  const notify = (title, body, code) => {
+    const script = () => exec('osascript', ['-e', `on run argv\ndisplay notification ("Enter " & item 1 of argv & " on your iPad") with title ${JSON.stringify(title)}\nend run`, code]);
+    (notifier ? exec(notifier, ['--notify', title, body], 90_000).catch(script) : script()).catch(() => {});
+  };
   const unauthed = {
     'GET /hello': () => ({ app: 'helm', name, id }),
     'POST /pair/start': async () => {
@@ -119,7 +125,7 @@ export function serve({
       lastStart = now();
       pairing = { code: String(randomInt(0, 1e6)).padStart(6, '0'), expires: now() + 120_000, tries: 0 };
       console.log(`pairing code: ${pairing.code}`);
-      await exec('osascript', ['-e', 'on run argv\ndisplay notification ("Enter " & item 1 of argv & " on your iPad") with title "Helm pairing"\nend run', pairing.code]).catch(() => {});
+      notify('Helm pairing', `Enter ${pairing.code} on your iPad`, pairing.code);
       return { name };
     },
     'POST /pair': async req => {
@@ -284,26 +290,33 @@ export function serve({
 
 const LAUNCH_AGENT = join(homedir(), 'Library/LaunchAgents/app.helm.bridge.plist');
 
-// Built once and kept: rebuilding changes its signature, and macOS would forget the Accessibility grant.
+// Rebuilt only when LAUNCHER_VERSION changes (bump it with launcher.swift): a rebuild changes the
+// signature, so macOS forgets the Accessibility, Documents and notification permissions.
+const LAUNCHER_VERSION = '2';
 async function launcherApp() {
   const app = join(SUPPORT, 'Helm Bridge.app');
   const bin = join(app, 'Contents/MacOS/helm-bridge');
-  if (existsSync(bin)) return bin;
+  const plist = join(app, 'Contents/Info.plist');
+  const version = `<key>CFBundleVersion</key><string>${LAUNCHER_VERSION}</string>`;
+  if (existsSync(bin) && existsSync(plist) && readFileSync(plist, 'utf8').includes(version)) return bin;
+  rmSync(app, { recursive: true, force: true });
   mkdirSync(dirname(bin), { recursive: true });
-  writeFileSync(join(app, 'Contents/Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+  mkdirSync(join(app, 'Contents/Resources'), { recursive: true });
+  copyFileSync(fileURLToPath(new URL('./HelmBridge.icns', import.meta.url)), join(app, 'Contents/Resources/HelmBridge.icns'));
+  await realExec('swiftc', ['-O', fileURLToPath(new URL('./launcher.swift', import.meta.url)), '-o', bin], 120000);
+  // Written after the build succeeds: it carries the version, so a failed build is retried next install.
+  writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleIdentifier</key><string>app.helm.bridge</string>
   <key>CFBundleName</key><string>Helm Bridge</string>
   <key>CFBundleExecutable</key><string>helm-bridge</string>
   <key>CFBundleIconFile</key><string>HelmBridge</string>
+  ${version}
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>
 </dict></plist>
 `);
-  mkdirSync(join(app, 'Contents/Resources'), { recursive: true });
-  copyFileSync(fileURLToPath(new URL('./HelmBridge.icns', import.meta.url)), join(app, 'Contents/Resources/HelmBridge.icns'));
-  await realExec('swiftc', ['-O', fileURLToPath(new URL('./launcher.swift', import.meta.url)), '-o', bin], 120000);
   await realExec('codesign', ['--force', '--sign', '-', '--identifier', 'app.helm.bridge', app]);
   return bin;
 }

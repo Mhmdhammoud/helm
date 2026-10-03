@@ -43,7 +43,7 @@ async function start(t, opts = {}) {
   const h = harness();
   // Each clock read moves 6s on, so back-to-back pairing starts in a test aren't throttled.
   let clock = Date.now();
-  const server = await serve({ port: 0, exec: h.exec, hushState: [h.hushState], supportDir: h.dir, name: 'Mac mini', watch: false, now: () => (clock += 6000), ...opts });
+  const server = await serve({ port: 0, exec: h.exec, hushState: [h.hushState], supportDir: h.dir, name: 'Mac mini', watch: false, now: () => (clock += 6000), notifier: '', ...opts });
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
   let token = '';
@@ -58,6 +58,24 @@ async function start(t, opts = {}) {
   const run = (action, id) => call('POST', '/run', { action, id });
   return { ...h, h, call, run, base, token: () => token };
 }
+
+test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
+  const h = harness();
+  let allowed = true;
+  const exec = async (cmd, args) => {
+    if (args[0] === '--notify') { h.calls.push([cmd, ...args]); if (!allowed) throw new Error('not allowed'); return ''; }
+    return h.exec(cmd, args);
+  };
+  const server = await serve({ port: 0, exec, hushState: [h.hushState], supportDir: h.dir, watch: false, notifier: '/x/helm-bridge', now: (() => { let c = 0; return () => (c += 6000); })() });
+  t.after(() => server.close());
+  const pairStart = async () => { await fetch(`http://127.0.0.1:${server.address().port}/pair/start`, { method: 'POST' }); await new Promise(r => setTimeout(r, 10)); };
+  await pairStart();
+  assert.deepEqual(h.calls.map(c => c[0]), ['/x/helm-bridge']);
+  assert.match(h.calls[0][3], /^Enter \d{6} on your iPad$/);
+  allowed = false;
+  await pairStart();
+  assert.deepEqual(h.calls.slice(1).map(c => c[0]), ['/x/helm-bridge', 'osascript']);
+});
 
 test('pairing: new codes are throttled and 15 wrong guesses lock pairing for 15 minutes', async t => {
   let clock = 1e12;
