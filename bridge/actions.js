@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { BadRequest } from './deck.js';
+import { makeOsa } from './runner.js';
 
 const pexec = promisify(execFile);
 export const realExec = async (cmd, args, timeout = 30000) => (await pexec(cmd, args, { timeout })).stdout.trim();
@@ -57,9 +58,14 @@ if old is not missing value then set the clipboard to old
 end run`;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const osa = (exec, script, ...args) => exec('osascript', ['-e', script, ...args]);
 
-export function makeRunner({ exec = realExec, hushCli, supportDir }) {
+// AppleScript goes through one long-lived osascript (runner.js) on the real Mac; an injected `exec` (tests)
+// sees it as plain `osascript -e script args…` calls, as does anyone passing their own `osa`.
+export function makeRunner({
+  exec = realExec, hushCli, supportDir,
+  osa = exec === realExec ? makeOsa({ exec }) : (script, args) => exec('osascript', ['-e', script, ...args]),
+}) {
+  const as = (script, ...args) => osa(script, args);
   const toggles = {}; // "page/slot" → on?
   let lastMic = 75;
 
@@ -91,16 +97,16 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
     const gen = ++volGen;
     if (a.mute === 'toggle') {
       if (await postKey(SOUND.mute)) return;
-      return osa(exec, 'set volume output muted (not (output muted of (get volume settings)))');
+      return as('set volume output muted (not (output muted of (get volume settings)))');
     }
     let steps;
     if (a.set != null) {
       const target = Math.max(0, Math.min(100, Number(a.set) || 0));
-      const current = Number(await osa(exec, 'output volume of (get volume settings)'));
+      const current = Number(await as('output volume of (get volume settings)'));
       // Key presses move along macOS's 16-step grid; the first press from an off-grid level only snaps to it.
       const t = Math.round(target / 6.25), c = Math.round((current / 6.25) * 100) / 100;
       steps = Math.max(-16, Math.min(16, t > c ? t - Math.floor(c) : t < c ? t - Math.ceil(c) : 0));
-      if (!steps) return target === current ? undefined : osa(exec, `set volume output volume ${target}`);
+      if (!steps) return target === current ? undefined : as(`set volume output volume ${target}`);
       if (gen !== volGen) return;
     } else {
       const change = Math.round(Number(a.change) || 0);
@@ -112,8 +118,8 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
       if (!(await postKey(steps > 0 ? SOUND.up : SOUND.down))) {
         if (i) return; // the helper died mid-way; leave it where it got to
         return a.set != null
-          ? osa(exec, `set volume output volume ${Math.max(0, Math.min(100, Number(a.set) || 0))}`)
-          : osa(exec, `set volume output volume ((output volume of (get volume settings)) + ${Math.round(Number(a.change) || 0)})`);
+          ? as(`set volume output volume ${Math.max(0, Math.min(100, Number(a.set) || 0))}`)
+          : as(`set volume output volume ((output volume of (get volume settings)) + ${Math.round(Number(a.change) || 0)})`);
       }
     }
   }
@@ -121,13 +127,13 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
   async function run(a, id) {
     switch (a.type) {
       case 'hotkey':
-        return osa(exec, hotkeyScript(a.key, a.mods), String(a.key ?? ''));
+        return as(hotkeyScript(a.key, a.mods), String(a.key ?? ''));
       case 'open': {
         const t = String(a.target ?? '');
         return exec('open', t.includes('/') || t.includes(':') ? [t] : ['-a', t]);
       }
       case 'text':
-        return osa(exec, PASTE, String(a.text ?? ''));
+        return as(PASTE, String(a.text ?? ''));
       case 'media':
         if (!Object.hasOwn(MEDIA, a.key)) throw new BadRequest(`unknown media key: ${a.key}`);
         return mediaKey(a.key);
@@ -138,12 +144,12 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
       case 'script':
         return exec('/bin/zsh', ['-lc', String(a.command ?? '')], 60000);
       case 'mic': {
-        const mic = Number(await osa(exec, 'input volume of (get volume settings)'));
+        const mic = Number(await as('input volume of (get volume settings)'));
         if (mic > 0) lastMic = mic;
-        return osa(exec, `set volume input volume ${mic > 0 ? 0 : lastMic}`);
+        return as(`set volume input volume ${mic > 0 ? 0 : lastMic}`);
       }
       case 'system':
-        if (a.what === 'lock') return osa(exec, hotkeyScript('q', ['ctrl', 'cmd']), 'q');
+        if (a.what === 'lock') return as(hotkeyScript('q', ['ctrl', 'cmd']), 'q');
         if (a.what === 'sleep-display') return exec('pmset', ['displaysleepnow']);
         if (a.what === 'screensaver') return exec('open', ['-a', 'ScreenSaverEngine']);
         throw new BadRequest(`unknown system action: ${a.what}`);
@@ -174,7 +180,7 @@ export function makeRunner({ exec = realExec, hushCli, supportDir }) {
   }
 
   async function macState() {
-    const [vol, muted, mic] = (await osa(exec, 'set s to get volume settings\nreturn (output volume of s as text) & "," & (output muted of s as text) & "," & (input volume of s as text)')).split(',');
+    const [vol, muted, mic] = (await as('set s to get volume settings\nreturn (output volume of s as text) & "," & (output muted of s as text) & "," & (input volume of s as text)')).split(',');
     const front = await exec('/bin/zsh', ['-c', 'lsappinfo info -only name "$(lsappinfo front)"']).catch(() => '');
     return {
       volume: Number(vol),

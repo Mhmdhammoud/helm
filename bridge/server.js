@@ -64,7 +64,8 @@ function frame(op, data = '') {
 const closeFrame = (code, reason) => frame(8, Buffer.concat([Buffer.from([code >> 8, code & 255]), Buffer.from(reason)]));
 
 // ponytail: volume/mic come from one long-lived JXA loop (~3% CPU) instead of spawning osascript 5x/s (~15%).
-// It duplicates the volume read in actions.js macState(); move it there if that file grows a watcher.
+// It stays apart from the action runner (runner.js): a JXA loop can't wait on stdin and poll at once without a
+// run loop, and polling through the action queue would stall the volume readout behind a slow paste.
 // It exits by itself once orphaned (getppid() === 1), so a killed bridge never leaves it running.
 const WATCH_JXA = `ObjC.import('unistd'); const a = Application.currentApplication(); a.includeStandardAdditions = true; let last = '';
 while ($.getppid() !== 1) { const s = a.getVolumeSettings(); const l = [s.outputVolume, s.outputMuted, s.inputVolume].join(',');

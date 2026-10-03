@@ -1,12 +1,15 @@
 // Drives the bridge over HTTP with a recording `exec`, so nothing runs on the Mac.
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough, Writable } from 'node:stream';
 import test from 'node:test';
 import { appIcon, hotkeyScript, makeRunner, parseHush } from './actions.js';
 import { cpuLoad, macBattery, memoryUsed } from './features.js';
 import { defaultDeck, saveDeck, validateDeck } from './deck.js';
+import { makeOsa } from './runner.js';
 import { serve } from './server.js';
 
 function harness() {
@@ -351,4 +354,87 @@ test('volume uses the real volume keys (HUD), latest-wins, osascript fallback', 
   await r2.run({ type: 'volume', mute: 'toggle' }, 'k');
   assert.match(calls.at(-1)[2], /output muted/);
   assert.equal(calls.filter(c => c[0] === 'swiftc').length, 1, 'a failed compile is not retried');
+});
+
+// A fake long-lived osascript for makeOsa: `reply(cmd)` answers each command line (or returns undefined to hang).
+function fakeOsa({ reply = c => ({ id: c.id, ok: true, out: `ran ${c.script}` }), crashOn } = {}) {
+  const procs = [], exec = [], lines = [];
+  let busy = 0, maxBusy = 0;
+  const spawn = (cmd, args) => {
+    assert.deepEqual([cmd, args[0], args[1]], ['osascript', '-l', 'JavaScript']);
+    const p = new EventEmitter();
+    p.stdout = new PassThrough();
+    p.killed = false;
+    p.kill = () => { p.killed = true; setImmediate(() => p.emit('exit', null, 'SIGTERM')); };
+    p.stdin = new Writable({
+      write(chunk, _, done) {
+        const line = chunk.toString();
+        lines.push(line);
+        const c = JSON.parse(line);
+        maxBusy = Math.max(maxBusy, ++busy);
+        if (crashOn?.(c)) { busy--; setImmediate(() => p.emit('exit', null, 'SIGSEGV')); return done(); }
+        const r = reply(c);
+        if (r) setTimeout(() => { busy--; p.stdout.write(`${JSON.stringify(r)}\n`); }, 2);
+        done();
+      },
+    });
+    procs.push(p);
+    return p;
+  };
+  const execFn = async (cmd, args) => { exec.push([cmd, ...args]); return 'one-shot'; };
+  return { spawn, exec: execFn, procs, execCalls: exec, lines, maxBusy: () => maxBusy };
+}
+
+test('runner: command roundtrip over one process, script errors are not retried', async () => {
+  const f = fakeOsa({ reply: c => (c.script === 'bad' ? { id: c.id, ok: false, error: 'syntax error' } : { id: c.id, ok: true, out: c.args.join('|') }) });
+  const osa = makeOsa({ exec: f.exec, spawn: f.spawn });
+  assert.equal(await osa('s', ['مرحبا', 'b']), 'مرحبا|b');
+  assert.match(f.lines[0], /^[\x00-\x7e]*\n$/, 'the wire is ASCII-only');
+  await assert.rejects(osa('bad'), /syntax error/);
+  assert.equal(await osa('s', [1, 2]), '1|2', 'args become strings');
+  assert.equal(f.procs.length, 1, 'one process for everything');
+  assert.equal(f.execCalls.length, 0, 'no one-shot osascript');
+});
+
+test('runner: a crash mid-command is reported (never run twice), then a fresh process takes over', async () => {
+  let crashes = 1;
+  const f = fakeOsa({ crashOn: () => crashes-- > 0 });
+  const osa = makeOsa({ exec: f.exec, spawn: f.spawn });
+  await assert.rejects(osa('hotkey', ['a']), /may not have run/);
+  assert.deepEqual(f.execCalls, [], 'not retried: the keystroke may already have happened');
+  assert.equal(await osa('again'), 'ran again');
+  assert.equal(f.procs.length, 2, 'restarted');
+});
+
+test('runner: a hung command times out and is killed, not retried', async () => {
+  let hang = true;
+  const f = fakeOsa({ reply: c => (hang ? ((hang = false), undefined) : { id: c.id, ok: true, out: 'fast' }) });
+  const osa = makeOsa({ exec: f.exec, spawn: f.spawn, timeoutMs: 20 });
+  const t0 = Date.now();
+  await assert.rejects(osa('slow'), /timed out/);
+  assert.ok(Date.now() - t0 < 500);
+  assert.ok(f.procs[0].killed, 'the stuck process is killed');
+  assert.deepEqual(f.execCalls, []);
+  assert.equal(await osa('next'), 'fast');
+  assert.equal(f.procs.length, 2);
+});
+
+test('runner: commands run one at a time, in order, even across a crash', async () => {
+  const f = fakeOsa({ crashOn: c => c.script === 'b' });
+  const osa = makeOsa({ exec: f.exec, spawn: f.spawn });
+  const done = [];
+  await Promise.all(['a', 'b', 'c', 'd'].map(s => osa(s).then(out => done.push([s, out]), () => done.push([s, 'failed']))));
+  assert.deepEqual(done, [['a', 'ran a'], ['b', 'failed'], ['c', 'ran c'], ['d', 'ran d']]);
+  assert.deepEqual(f.lines.map(l => JSON.parse(l).script), ['a', 'b', 'c', 'd']);
+  assert.equal(f.maxBusy(), 1, 'never more than one command in flight');
+});
+
+test('makeRunner sends AppleScript through an injected osa', async () => {
+  const calls = [];
+  const r = makeRunner({ exec: async () => '', supportDir: mkdtempSync(join(tmpdir(), 'helm-')), osa: async (s, a) => (calls.push([s, ...a]), s.startsWith('input volume') ? '60' : '') });
+  await r.run({ type: 'hotkey', key: 'a', mods: ['cmd'] }, 'k');
+  await r.run({ type: 'mic' }, 'k');
+  assert.match(calls[0][0], /keystroke/);
+  assert.equal(calls[0][1], 'a');
+  assert.deepEqual(calls.slice(1).map(c => c[0]), ['input volume of (get volume settings)', 'set volume input volume 0']);
 });
