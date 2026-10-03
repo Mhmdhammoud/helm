@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Dial } from './Dial';
 import { KeyEditor } from './Editor';
-import { KeyTile } from './KeyTile';
+import { KeyTile, type Feedback } from './KeyTile';
+import { Symbol } from './Symbol';
 import type { Action, Deck, Key, State } from './types';
-import { C } from './theme';
+import { C, SPRING } from './theme';
 
 const GRIDS = [{ cols: 4, rows: 3 }, { cols: 5, rows: 3 }, { cols: 6, rows: 4 }, { cols: 8, rows: 4 }];
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -28,6 +30,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const [picked, setPicked] = useState<string | null>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [flash, setFlash] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
+  const flashKey = (slot: string, ok: boolean) => setFeedback(f => ({ ...f, [slot]: { n: (f[slot]?.n ?? 0) + 1, ok } }));
 
   const pageId = deck.pages.some(p => p.id === stack.at(-1)) ? stack.at(-1)! : deck.pages[0].id;
   const page = deck.pages.find(p => p.id === pageId)!;
@@ -74,7 +78,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     }
     if (!k) return;
     navigate(k.action);
-    api.run(k.action, `${page.id}/${slot}`).then(refresh, e => setFlash(`${k.title || 'Key'}: ${e.message}`));
+    const slotId = `${page.id}/${slot}`;
+    api.run(k.action, slotId).then(() => { flashKey(slotId, true); refresh(); }, e => { flashKey(slotId, false); setFlash(`${k.title || 'Key'}: ${e.message}`); });
   };
 
   const navigate = (a: Action) => {
@@ -111,7 +116,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     Alert.prompt('New page', undefined, name => {
       if (!name?.trim()) return;
       const id = uid();
-      setDeck({ ...deck, pages: [...deck.pages, { id, name: name.trim(), keys: { 0: { title: 'Back', icon: { emoji: '↩️' }, action: { type: 'back' } } } }] });
+      setDeck({ ...deck, pages: [...deck.pages, { id, name: name.trim(), keys: { 0: { title: 'Back', action: { type: 'back' } } } }] });
       setStack(s => [...s, id]);
     });
 
@@ -119,73 +124,74 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (area.h - gap * (rows - 1)) / rows));
   const dials = deck.dials ?? [];
 
+  const tabs = [
+    ...(stack.length > 1 ? [{ id: '__back', label: 'Back', symbol: 'chevron.backward' }] : []),
+    ...deck.pages.map(p => ({ id: p.id, label: p.name, symbol: p.app ? 'bolt.fill' : undefined })),
+  ];
+
   return (
     <View style={st.root}>
       <View style={st.top}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.tabs}>
-          {stack.length > 1 && (
-            <Pressable onPress={() => setStack(s => s.slice(0, -1))} style={st.tab}><Text style={st.tabText}>‹ Back</Text></Pressable>
-          )}
-          {deck.pages.map(p => (
-            <Pressable key={p.id} onPress={() => { auto.current = null; setStack([p.id]); }} onLongPress={() => editing && pageMenu(p.id)}
-              style={[st.tab, p.id === pageId && st.tabOn]}>
-              <Text style={[st.tabText, p.id === pageId && st.tabTextOn]}>{p.name}{p.app ? ' ⚡︎' : ''}</Text>
-            </Pressable>
-          ))}
-          {editing && <Pressable onPress={addPage} style={st.tab}><Text style={st.tabText}>+ Page</Text></Pressable>}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.tabScroll} contentContainerStyle={st.tabsRow}>
+          <PageTabs tabs={tabs} current={pageId}
+            onPress={id => (id === '__back' ? setStack(s => s.slice(0, -1)) : (auto.current = null, setStack([id])))}
+            onLongPress={id => editing && id !== '__back' && pageMenu(id)} />
+          {editing && <Pill symbol="plus" label="Page" onPress={addPage} />}
         </ScrollView>
         <View style={st.topRight}>
           {editing && (
-            <Pressable onPress={() => {
-              const i = GRIDS.findIndex(g => g.cols === cols && g.rows === rows);
-              setDeck({ ...deck, grid: GRIDS[(i + 1) % GRIDS.length] });
-            }}><Text style={st.action}>{cols}×{rows}</Text></Pressable>
+            <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.topRight}>
+              <Pill symbol="square.grid.3x3" label={`${cols} × ${rows}`} onPress={() => {
+                const i = GRIDS.findIndex(g => g.cols === cols && g.rows === rows);
+                setDeck({ ...deck, grid: GRIDS[(i + 1) % GRIDS.length] });
+              }} />
+              <Pill symbol={deck.autoProfile ? 'bolt.fill' : 'bolt.slash'} label={deck.autoProfile ? 'Follow apps' : 'Fixed page'}
+                onPress={() => setDeck({ ...deck, autoProfile: !deck.autoProfile })} />
+            </Animated.View>
           )}
-          {editing && (
-            <Pressable onPress={() => setDeck({ ...deck, autoProfile: !deck.autoProfile })}>
-              <Text style={st.action}>Profiles {deck.autoProfile ? 'on' : 'off'}</Text>
-            </Pressable>
-          )}
-          <Pressable onPress={onMacs}><Text style={[st.action, error && st.err]}>{error ? '⚠︎ ' : '● '}{macName}</Text></Pressable>
-          <Pressable onPress={() => { setEditing(e => !e); setPicked(null); }}>
-            <Text style={[st.action, st.bold]}>{editing ? 'Done' : 'Edit'}</Text>
-          </Pressable>
+          <Pill symbol="desktopcomputer" label={macName} dot={error ? C.danger : C.ok} onPress={onMacs} />
+          <Pill label={editing ? 'Done' : 'Edit'} strong={editing} onPress={() => { setEditing(e => !e); setPicked(null); }} />
         </View>
       </View>
 
       <View style={st.main}>
         <View style={st.grid} onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-          {size > 0 && Array.from({ length: rows }, (_, r) => (
-            <View key={r} style={[st.gridRow, { gap }]}>
-              {Array.from({ length: cols }, (_, c) => {
-                const slot = String(r * cols + c);
-                return (
-                  <KeyTile key={slot} id={`${page.id}/${slot}`} k={page.keys[slot]} size={size} api={api} state={state}
-                    editing={editing} picked={picked === slot} onPress={() => press(slot)}
-                    onLongPress={() => (editing ? setPicked(page.keys[slot] ? slot : null) : setEditing(true))} />
-                );
-              })}
-            </View>
-          ))}
+          {size > 0 && (
+            <Animated.View key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
+              {Array.from({ length: rows }, (_, r) => (
+                <View key={r} style={[st.gridRow, { gap }]}>
+                  {Array.from({ length: cols }, (_, c) => {
+                    const slot = String(r * cols + c);
+                    const slotId = `${page.id}/${slot}`;
+                    return (
+                      <KeyTile key={slot} id={slotId} k={page.keys[slot]} size={size} api={api} state={state}
+                        editing={editing} picked={picked === slot} feedback={feedback[slotId]} onPress={() => press(slot)}
+                        onLongPress={() => (editing ? setPicked(page.keys[slot] ? slot : null) : setEditing(true))} />
+                    );
+                  })}
+                </View>
+              ))}
+            </Animated.View>
+          )}
         </View>
 
         {dials.length > 0 && (
           <View style={st.dials}>
             {dials.includes('volume') && (
-              <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={170} label="VOLUME"
+              <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={180} label="VOLUME"
                 format={v => String(v * 5)} onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
             )}
             {dials.includes('anc') && state?.headphones && (
-              <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={170} label="NOISE"
+              <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180} label="NOISE"
                 onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
             )}
           </View>
         )}
       </View>
 
-      <Text style={st.status} numberOfLines={1}>
+      <Text style={[st.status, flash && st.err]} numberOfLines={1}>
         {flash ?? (editing
-          ? picked ? 'Tap another slot to swap with it.' : 'Tap a key to edit it · long-press a key to move it · long-press a page tab for options'
+          ? picked ? 'Tap another slot to swap with it.' : 'Tap a key to change it  ·  hold a key to move it  ·  hold a page for options'
           : error ? `Can't reach ${macName}: ${error}` : state?.mac?.app ? `${state.mac.app} is in front` : '')}
       </Text>
 
@@ -199,21 +205,75 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   );
 }
 
+/** Page tabs in one capsule; a silver puck springs to the current page. */
+function PageTabs({ tabs, current, onPress, onLongPress }: {
+  tabs: { id: string; label: string; symbol?: string }[];
+  current: string;
+  onPress: (id: string) => void;
+  onLongPress: (id: string) => void;
+}) {
+  const [frames, setFrames] = useState<Record<string, { x: number; w: number }>>({});
+  const x = useSharedValue(0);
+  const w = useSharedValue(0);
+  const f = frames[current];
+  useEffect(() => {
+    if (!f) return;
+    const first = w.value === 0;
+    x.value = first ? f.x : withSpring(f.x, SPRING);
+    w.value = first ? f.w : withSpring(f.w, SPRING);
+  }, [f?.x, f?.w]); // eslint-disable-line react-hooks/exhaustive-deps
+  const puck = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }], width: w.value }));
+
+  return (
+    <View style={st.capsule}>
+      <Animated.View style={[st.puck, puck]} />
+      {tabs.map(t => {
+        const on = t.id === current;
+        return (
+          <Pressable key={t.id} onPress={() => onPress(t.id)} onLongPress={() => onLongPress(t.id)} hitSlop={6}
+            onLayout={e => { const { x: lx, width } = e.nativeEvent.layout; setFrames(fr => ({ ...fr, [t.id]: { x: lx, w: width } })); }}
+            style={st.tab}>
+            {t.symbol && <Symbol name={t.symbol} size={13} weight="semibold" color={on ? C.bg : C.secondary} />}
+            <Text style={[st.tabText, on && st.tabTextOn]}>{t.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Small translucent capsule button used across the top bar. */
+function Pill({ label, symbol, dot, strong, onPress }: { label: string; symbol?: string; dot?: string; strong?: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8} style={({ pressed }) => [st.pill, strong && st.pillStrong, pressed && { opacity: 0.6 }]}>
+      {symbol && <Symbol name={symbol} size={14} weight="medium" color={strong ? C.bg : C.secondary} />}
+      <Text style={[st.pillText, strong && st.tabTextOn]} numberOfLines={1}>{label}</Text>
+      {dot && <View style={[st.dot, { backgroundColor: dot }]} />}
+    </Pressable>
+  );
+}
+
+const glass = { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline };
+
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 32, paddingTop: 24, paddingBottom: 12 },
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 16 },
-  tabs: { gap: 8, alignItems: 'center' },
-  tab: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12, backgroundColor: C.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline },
-  tabOn: { backgroundColor: C.silver, borderColor: C.silver },
-  tabText: { color: C.secondary, fontSize: 16, fontWeight: '500' },
+  root: { flex: 1, paddingHorizontal: 36, paddingTop: 26, paddingBottom: 14 },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, gap: 16 },
+  tabScroll: { flexGrow: 0, flexShrink: 1 },
+  tabsRow: { gap: 10, alignItems: 'center' },
+  capsule: { flexDirection: 'row', padding: 4, borderRadius: 20, ...glass },
+  puck: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 16, backgroundColor: C.silver },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16 },
+  tabText: { color: C.secondary, fontSize: 15, fontWeight: '600' },
   tabTextOn: { color: C.bg },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: 22 },
-  action: { color: C.silver, fontSize: 16 },
-  bold: { fontWeight: '600' },
-  err: { color: '#e8a0a0' },
-  main: { flex: 1, flexDirection: 'row', gap: 28 },
-  grid: { flex: 1, justifyContent: 'center', gap: 16 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 40, paddingHorizontal: 16, borderRadius: 20, ...glass },
+  pillStrong: { backgroundColor: C.silver, borderColor: C.silver },
+  pillText: { color: C.text, fontSize: 15, fontWeight: '600', maxWidth: 180 },
+  dot: { width: 7, height: 7, borderRadius: 4, marginLeft: 6 },
+  err: { color: C.danger },
+  main: { flex: 1, flexDirection: 'row', gap: 32 },
+  grid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   gridRow: { flexDirection: 'row', justifyContent: 'center' },
-  dials: { justifyContent: 'center', gap: 24 },
-  status: { color: C.dim, fontSize: 14, textAlign: 'center', marginTop: 10, minHeight: 18 },
+  dials: { justifyContent: 'center', gap: 28 },
+  status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },
 });

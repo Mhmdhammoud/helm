@@ -1,31 +1,86 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import type { Client } from './api';
+import { Backdrop } from './Backdrop';
+import { KeyTile, type Feedback } from './KeyTile';
+import { Symbol, defaultSymbol } from './Symbol';
 import type { Action, ActionType, Key, Live, Mod, Page } from './types';
-import { C, KEY_COLORS } from './theme';
-import { Chip, s } from './ui';
+import { C, SPRING } from './theme';
+import { Advanced, Heading, IconTile, Input, Keycap, MODS, NAMED_KEYS, Options, Segmented, Suggest, Swatches, capFor, st as p } from './EditorParts';
 
-const TYPES: { type: ActionType; label: string; make: (pages: Page[]) => Action; nested?: boolean }[] = [
-  { type: 'open', label: 'Open app / URL', make: () => ({ type: 'open', target: '' }), nested: true },
-  { type: 'hotkey', label: 'Hotkey', make: () => ({ type: 'hotkey', key: '', mods: ['cmd'] }), nested: true },
-  { type: 'text', label: 'Type text', make: () => ({ type: 'text', text: '' }), nested: true },
-  { type: 'media', label: 'Media', make: () => ({ type: 'media', key: 'play' }), nested: true },
-  { type: 'volume', label: 'Volume', make: () => ({ type: 'volume', change: 6 }), nested: true },
-  { type: 'mic', label: 'Mic mute', make: () => ({ type: 'mic' }), nested: true },
-  { type: 'shortcut', label: 'Shortcut', make: () => ({ type: 'shortcut', name: '' }), nested: true },
-  { type: 'script', label: 'Script', make: () => ({ type: 'script', command: '' }), nested: true },
-  { type: 'system', label: 'System', make: () => ({ type: 'system', what: 'lock' }), nested: true },
-  { type: 'hush', label: 'Hush', make: () => ({ type: 'hush', cmd: 'anc/10' }), nested: true },
-  { type: 'app', label: 'Hush panel', make: () => ({ type: 'app', app: 'hush' }) },
-  { type: 'page', label: 'Go to page', make: pages => ({ type: 'page', page: pages[0]?.id ?? '' }) },
-  { type: 'back', label: 'Back', make: () => ({ type: 'back' }) },
-  { type: 'multi', label: 'Multi action', make: () => ({ type: 'multi', steps: [], delayMs: 100 }) },
-  { type: 'toggle', label: 'Toggle', make: () => ({ type: 'toggle', on: { type: 'hush', cmd: 'anc/10' }, off: { type: 'hush', cmd: 'anc/0' } }) },
+type TypeDef = { type: ActionType; label: string; symbol: string; make: (pages: Page[]) => Action };
+const GROUPS: { title: string; nested: boolean; types: TypeDef[] }[] = [
+  {
+    title: 'Mac',
+    nested: true,
+    types: [
+      { type: 'open', label: 'Open', symbol: 'arrow.up.forward.app', make: () => ({ type: 'open', target: '' }) },
+      { type: 'hotkey', label: 'Key combo', symbol: 'command', make: () => ({ type: 'hotkey', key: '', mods: ['cmd'] }) },
+      { type: 'text', label: 'Type text', symbol: 'text.cursor', make: () => ({ type: 'text', text: '' }) },
+      { type: 'media', label: 'Media', symbol: 'playpause.fill', make: () => ({ type: 'media', key: 'play' }) },
+      { type: 'volume', label: 'Volume', symbol: 'speaker.wave.2.fill', make: () => ({ type: 'volume', change: 6 }) },
+      { type: 'mic', label: 'Microphone', symbol: 'mic.fill', make: () => ({ type: 'mic' }) },
+      { type: 'shortcut', label: 'Shortcut', symbol: 'square.stack.3d.up.fill', make: () => ({ type: 'shortcut', name: '' }) },
+      { type: 'script', label: 'Run command', symbol: 'apple.terminal', make: () => ({ type: 'script', command: '' }) },
+      { type: 'system', label: 'System', symbol: 'lock.fill', make: () => ({ type: 'system', what: 'lock' }) },
+    ],
+  },
+  {
+    title: 'Hush',
+    nested: true,
+    types: [
+      { type: 'hush', label: 'Headphones', symbol: 'headphones', make: () => ({ type: 'hush', cmd: 'anc/10' }) },
+      { type: 'app', label: 'Hush panel', symbol: 'slider.horizontal.3', make: () => ({ type: 'app', app: 'hush' }) },
+    ],
+  },
+  {
+    title: 'Deck',
+    nested: false,
+    types: [
+      { type: 'page', label: 'Go to page', symbol: 'square.grid.2x2', make: pages => ({ type: 'page', page: pages[0]?.id ?? '' }) },
+      { type: 'back', label: 'Back', symbol: 'chevron.backward', make: () => ({ type: 'back' }) },
+      { type: 'multi', label: 'Several steps', symbol: 'list.bullet.rectangle', make: () => ({ type: 'multi', steps: [], delayMs: 100 }) },
+      { type: 'toggle', label: 'On / off', symbol: 'switch.2', make: () => ({ type: 'toggle', on: { type: 'hush', cmd: 'anc/10' }, off: { type: 'hush', cmd: 'anc/0' } }) },
+    ],
+  },
 ];
-const MODS: { mod: Mod; label: string }[] = [{ mod: 'cmd', label: '⌘' }, { mod: 'shift', label: '⇧' }, { mod: 'opt', label: '⌥' }, { mod: 'ctrl', label: '⌃' }];
-const NAMED_KEYS = ['return', 'escape', 'tab', 'space', 'delete', 'left', 'right', 'up', 'down', 'f1', 'f5', 'f12'];
-const HUSH_PRESETS = ['anc/0', 'anc/5', 'anc/10', 'anc/cycle', 'conversation/on', 'conversation/off', 'selfvoice/low', 'eq/flat', 'switch/iPhone', 'switch/Mac'];
-const LIVES: (Live | null)[] = [null, 'mic', 'volume', 'battery', 'anc', 'toggle'];
+
+const HUSH_PRESETS: { value: string; label: string; symbol: string }[] = [
+  { value: 'anc/10', label: 'Noise cancelling: max', symbol: 'circle.fill' },
+  { value: 'anc/5', label: 'Noise cancelling: half', symbol: 'circle.lefthalf.filled' },
+  { value: 'anc/0', label: 'Noise cancelling: off', symbol: 'circle' },
+  { value: 'anc/cycle', label: 'Cycle noise cancelling', symbol: 'arrow.triangle.2.circlepath' },
+  { value: 'anc/up', label: 'More noise cancelling', symbol: 'plus.circle' },
+  { value: 'anc/down', label: 'Less noise cancelling', symbol: 'minus.circle' },
+  { value: 'conversation/on', label: 'Conversation mode on', symbol: 'person.wave.2.fill' },
+  { value: 'conversation/off', label: 'Conversation mode off', symbol: 'person.fill.xmark' },
+  { value: 'selfvoice/low', label: 'Hear my voice: low', symbol: 'waveform' },
+  { value: 'selfvoice/off', label: 'Hear my voice: off', symbol: 'waveform.slash' },
+  { value: 'eq/flat', label: 'Reset sound to flat', symbol: 'slider.horizontal.3' },
+  { value: 'switch/iPhone', label: 'Switch to iPhone', symbol: 'iphone' },
+  { value: 'switch/Mac', label: 'Switch to Mac', symbol: 'laptopcomputer' },
+];
+
+const LIVES: { value: Live | undefined; label: string }[] = [
+  { value: undefined, label: 'None' },
+  { value: 'mic', label: 'Mic' },
+  { value: 'volume', label: 'Volume' },
+  { value: 'battery', label: 'Headphone battery' },
+  { value: 'anc', label: 'Noise cancelling' },
+  { value: 'toggle', label: 'Toggle state' },
+];
+
+// Curated glyphs: media, system, apps, communication, dev, home, arrows.
+const SYMBOLS = [
+  'play.fill', 'pause.fill', 'playpause.fill', 'backward.fill', 'forward.fill', 'speaker.wave.3.fill', 'speaker.slash.fill', 'music.note',
+  'mic.fill', 'mic.slash.fill', 'headphones', 'video.fill',
+  'lock.fill', 'moon.fill', 'sun.max.fill', 'power', 'gearshape.fill', 'display', 'keyboard', 'command', 'camera.fill', 'bolt.fill',
+  'safari', 'envelope.fill', 'message.fill', 'calendar', 'folder.fill', 'doc.fill', 'phone.fill', 'person.fill', 'person.2.fill', 'bell.fill',
+  'terminal.fill', 'chevron.left.forwardslash.chevron.right', 'hammer.fill', 'cpu',
+  'house.fill', 'lightbulb.fill', 'fan.fill', 'thermometer.medium', 'star.fill', 'heart.fill',
+  'arrow.up', 'arrow.down', 'arrow.left', 'arrow.right', 'arrow.clockwise', 'arrow.uturn.backward',
+];
 
 // Loaded once per session from the Mac, for the app and shortcut suggestions.
 const lists: Record<string, Promise<string[]> | undefined> = {};
@@ -38,26 +93,16 @@ function useList(name: 'apps' | 'shortcuts', api: Client) {
   return items;
 }
 
-function Suggest({ list, query, onPick }: { list: string[]; query: string; onPick: (v: string) => void }) {
-  const q = query.toLowerCase();
-  const hits = list.filter(x => x.toLowerCase().includes(q) && x !== query).slice(0, 10);
-  if (!hits.length) return null;
-  return <View style={s.wrap}>{hits.map(h => <Chip key={h} label={h} onPress={() => onPick(h)} />)}</View>;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={st.field}>
-      <Text style={st.fieldLabel}>{label}</Text>
+    <View style={st.group}>
+      <Heading>{title}</Heading>
       {children}
     </View>
   );
 }
 
-const Input = (p: React.ComponentProps<typeof TextInput>) => (
-  <TextInput placeholderTextColor={C.dim} autoCapitalize="none" autoCorrect={false} {...p} style={[s.input, p.multiline && st.multi, p.style]} />
-);
-
+/** Configures one action: a type picker, then the fields for that type. Nested inside steps and toggles. */
 export function ActionForm({ action, onChange, api, pages, nested }: {
   action: Action;
   onChange: (a: Action) => void;
@@ -67,112 +112,169 @@ export function ActionForm({ action, onChange, api, pages, nested }: {
 }) {
   const apps = useList('apps', api);
   const shortcuts = useList('shortcuts', api);
-  const types = nested ? TYPES.filter(t => t.nested) : TYPES;
   const a = action as any;
   const set = (patch: object) => onChange({ ...a, ...patch });
 
   return (
     <View style={st.form}>
-      <View style={s.wrap}>
-        {types.map(t => <Chip key={t.type} label={t.label} on={action.type === t.type} onPress={() => action.type !== t.type && onChange(t.make(pages))} />)}
-      </View>
+      {GROUPS.filter(g => !nested || g.nested).map(g => (
+        <View key={g.title} style={st.typeGroup}>
+          <Text style={st.typeGroupTitle}>{g.title}</Text>
+          <View style={st.grid}>
+            {g.types.filter(t => !nested || t.type !== 'app').map(t => (
+              <IconTile key={t.type} symbol={t.symbol} label={t.label} compact={nested} on={action.type === t.type}
+                onPress={() => action.type !== t.type && onChange(t.make(pages))} />
+            ))}
+          </View>
+        </View>
+      ))}
 
       {action.type === 'open' && (
-        <Field label="App name, file path or URL">
+        <Group title="App, file or website">
           <Input value={action.target} onChangeText={target => set({ target })} placeholder="Safari, ~/Notes.md, https://…" />
           <Suggest list={apps} query={action.target} onPick={target => set({ target })} />
-        </Field>
+        </Group>
       )}
-      {action.type === 'hotkey' && (
-        <Field label="Keys">
-          <View style={s.wrap}>
-            {MODS.map(m => (
-              <Chip key={m.mod} label={m.label} on={action.mods.includes(m.mod)}
-                onPress={() => set({ mods: action.mods.includes(m.mod) ? action.mods.filter(x => x !== m.mod) : [...action.mods, m.mod] })} />
-            ))}
-            <Input value={action.key} onChangeText={key => set({ key })} placeholder="key (a, 4, return…)" style={st.keyInput} />
-          </View>
-          <View style={s.wrap}>{NAMED_KEYS.map(k => <Chip key={k} label={k} on={action.key === k} onPress={() => set({ key: k })} />)}</View>
-        </Field>
-      )}
+      {action.type === 'hotkey' && <HotkeyForm keyName={action.key} mods={action.mods} set={set} />}
       {action.type === 'text' && (
-        <Field label="Text to type (pasted, so any language works)">
-          <Input value={action.text} onChangeText={text => set({ text })} multiline />
-        </Field>
+        <Group title="Text to type">
+          <Input value={action.text} onChangeText={text => set({ text })} multiline placeholder="Pasted on the Mac, so any language and emoji work." />
+        </Group>
       )}
       {action.type === 'media' && (
-        <View style={s.wrap}>
-          {(['previous', 'play', 'next'] as const).map(k => <Chip key={k} label={k === 'play' ? 'play / pause' : k} on={action.key === k} onPress={() => set({ key: k })} />)}
-        </View>
+        <Group title="Media key">
+          <Options value={action.key} onChange={key => set({ key })} items={[
+            { value: 'previous', label: 'Previous', symbol: 'backward.fill' },
+            { value: 'play', label: 'Play / pause', symbol: 'playpause.fill' },
+            { value: 'next', label: 'Next', symbol: 'forward.fill' },
+          ]} />
+        </Group>
       )}
       {action.type === 'volume' && (
-        <View style={s.wrap}>
-          <Chip label="Down" on={action.change === -6} onPress={() => onChange({ type: 'volume', change: -6 })} />
-          <Chip label="Up" on={action.change === 6} onPress={() => onChange({ type: 'volume', change: 6 })} />
-          <Chip label="Mute" on={action.mute === 'toggle'} onPress={() => onChange({ type: 'volume', mute: 'toggle' })} />
-        </View>
+        <Group title="Volume">
+          <Options value={action.mute === 'toggle' ? 'mute' : action.change === -6 ? 'down' : action.change === 6 ? 'up' : undefined}
+            onChange={v => onChange(v === 'mute' ? { type: 'volume', mute: 'toggle' } : { type: 'volume', change: v === 'down' ? -6 : 6 })}
+            items={[
+              { value: 'down', label: 'Turn down', symbol: 'speaker.wave.1.fill' },
+              { value: 'up', label: 'Turn up', symbol: 'speaker.wave.3.fill' },
+              { value: 'mute', label: 'Mute / unmute', symbol: 'speaker.slash.fill' },
+            ]} />
+        </Group>
       )}
+      {action.type === 'mic' && <Text style={st.note}>Mutes the Mac's microphone, or turns it back on.</Text>}
       {action.type === 'shortcut' && (
-        <Field label="Shortcut (from the Shortcuts app on the Mac)">
-          <Input value={action.name} onChangeText={name => set({ name })} />
+        <Group title="Shortcut from the Shortcuts app">
+          <Input value={action.name} onChangeText={name => set({ name })} placeholder="Shortcut name" />
           <Suggest list={shortcuts} query={action.name} onPick={name => set({ name })} />
-        </Field>
+        </Group>
       )}
       {action.type === 'script' && (
-        <Field label="Shell command (zsh, runs as you on the Mac)">
-          <Input value={action.command} onChangeText={command => set({ command })} multiline style={st.mono} />
-        </Field>
+        <Group title="Terminal command">
+          <Input value={action.command} onChangeText={command => set({ command })} multiline style={st.mono} placeholder="open -a Music && say hello" />
+          <Text style={st.note}>Runs in zsh as you, on the Mac.</Text>
+        </Group>
       )}
       {action.type === 'system' && (
-        <View style={s.wrap}>
-          {(['lock', 'sleep-display', 'screensaver'] as const).map(w => <Chip key={w} label={w.replace('-', ' ')} on={action.what === w} onPress={() => set({ what: w })} />)}
-        </View>
+        <Group title="System">
+          <Options value={action.what} onChange={what => set({ what })} items={[
+            { value: 'lock', label: 'Lock screen', symbol: 'lock.fill' },
+            { value: 'sleep-display', label: 'Turn off display', symbol: 'moon.fill' },
+            { value: 'screensaver', label: 'Screen saver', symbol: 'sparkles.tv' },
+          ]} />
+        </Group>
       )}
       {action.type === 'hush' && (
-        <Field label="Hush command">
-          <Input value={action.cmd} onChangeText={cmd => set({ cmd })} placeholder="anc/10" />
-          <View style={s.wrap}>{HUSH_PRESETS.map(p => <Chip key={p} label={p} on={action.cmd === p} onPress={() => set({ cmd: p })} />)}</View>
-        </Field>
+        <Group title="Headphones">
+          <Options value={action.cmd} onChange={cmd => set({ cmd })} items={HUSH_PRESETS} />
+          <Advanced initiallyOpen={!HUSH_PRESETS.some(h => h.value === action.cmd)}>
+            <Input value={action.cmd} onChangeText={cmd => set({ cmd })} placeholder="anc/7, eq/bass/-3, switch/iPad" style={st.mono} />
+          </Advanced>
+        </Group>
       )}
+      {action.type === 'app' && <Text style={st.note}>Opens the Hush headphone controls on this iPad.</Text>}
       {action.type === 'page' && (
-        <View style={s.wrap}>{pages.map(p => <Chip key={p.id} label={p.name} on={action.page === p.id} onPress={() => set({ page: p.id })} />)}</View>
+        <Group title="Page">
+          <Options value={action.page} onChange={page => set({ page })} items={pages.map(pg => ({ value: pg.id, label: pg.name, symbol: 'square.grid.2x2' }))} />
+        </Group>
       )}
+      {action.type === 'back' && <Text style={st.note}>Returns to the page you came from.</Text>}
       {action.type === 'multi' && (
-        <Field label="Steps, run in order">
-          {action.steps.map((step, i) => (
-            <View key={i} style={st.step}>
-              <View style={st.stepHead}>
-                <Text style={st.fieldLabel}>STEP {i + 1}</Text>
-                <Pressable onPress={() => set({ steps: action.steps.filter((_, j) => j !== i) })} hitSlop={10}>
-                  <Text style={st.remove}>Remove</Text>
-                </Pressable>
+        <Group title="Steps, in order">
+          <View style={st.steps}>
+            {action.steps.map((step, i) => (
+              <View key={i} style={st.card}>
+                <View style={st.cardHead}>
+                  <Text style={st.cardTitle}>Step {i + 1}</Text>
+                  <Pressable onPress={() => set({ steps: action.steps.filter((_, j) => j !== i) })} hitSlop={10} accessibilityLabel={`Remove step ${i + 1}`}>
+                    <Symbol name="minus.circle.fill" size={20} color={C.danger} />
+                  </Pressable>
+                </View>
+                <ActionForm action={step} api={api} pages={pages} nested
+                  onChange={n => set({ steps: action.steps.map((x, j) => (j === i ? n : x)) })} />
               </View>
-              <ActionForm action={step} api={api} pages={pages} nested
-                onChange={n => set({ steps: action.steps.map((x, j) => (j === i ? n : x)) })} />
+            ))}
+            <View style={st.stepFoot}>
+              <Pressable onPress={() => set({ steps: [...action.steps, { type: 'open', target: '' }] })}
+                style={({ pressed }) => [st.ghost, pressed && p.pressed]}>
+                <Symbol name="plus" size={14} weight="semibold" color={C.text} />
+                <Text style={st.ghostText}>Add step</Text>
+              </Pressable>
+              <Text style={st.note}>Wait</Text>
+              <Input value={String(action.delayMs ?? 100)} onChangeText={t => set({ delayMs: Number(t.replace(/\D/g, '')) || 0 })}
+                keyboardType="number-pad" style={st.delay} />
+              <Text style={st.note}>ms between steps</Text>
             </View>
-          ))}
-          <View style={s.wrap}>
-            <Chip label="+ Add step" onPress={() => set({ steps: [...action.steps, { type: 'open', target: '' }] })} />
-            <Input value={String(action.delayMs ?? 100)} onChangeText={t => set({ delayMs: Number(t.replace(/\D/g, '')) || 0 })} keyboardType="number-pad" style={st.keyInput} />
-            <Text style={st.fieldLabel}>ms between steps</Text>
           </View>
-        </Field>
+        </Group>
       )}
       {action.type === 'toggle' && (
         <>
-          <Field label="FIRST PRESS">
-            <View style={st.step}><ActionForm action={action.on} api={api} pages={pages} nested onChange={on => set({ on })} /></View>
-          </Field>
-          <Field label="SECOND PRESS">
-            <View style={st.step}><ActionForm action={action.off} api={api} pages={pages} nested onChange={off => set({ off })} /></View>
-          </Field>
+          <Group title="First press">
+            <View style={st.card}><ActionForm action={action.on} api={api} pages={pages} nested onChange={on => set({ on })} /></View>
+          </Group>
+          <Group title="Second press">
+            <View style={st.card}><ActionForm action={action.off} api={api} pages={pages} nested onChange={off => set({ off })} /></View>
+          </Group>
         </>
       )}
     </View>
   );
 }
 
-/** Edits one key. Save writes it back into the page; Clear removes it. */
+function HotkeyForm({ keyName, mods, set }: { keyName: string; mods: Mod[]; set: (p: object) => void }) {
+  const held = MODS.filter(m => mods.includes(m.mod));
+  return (
+    <Group title="Key combo">
+      <View style={st.combo}>
+        {held.map(m => <Keycap key={m.mod} cap={m.glyph} on big />)}
+        {held.length > 0 && <Text style={st.plus}>+</Text>}
+        <Keycap cap={keyName ? capFor(keyName) : '?'} on={!!keyName} big />
+      </View>
+      <View style={st.capRow}>
+        {MODS.map(m => (
+          <Keycap key={m.mod} cap={m.glyph} label={m.name} on={mods.includes(m.mod)}
+            onPress={() => set({ mods: mods.includes(m.mod) ? mods.filter(x => x !== m.mod) : [...mods, m.mod] })} />
+        ))}
+        <Input value={NAMED_KEYS.some(n => n.key === keyName) ? '' : keyName} onChangeText={key => set({ key: key.slice(-1) })}
+          placeholder="Type a key" style={st.keyInput} />
+      </View>
+      <View style={st.capRow}>
+        {NAMED_KEYS.map(n => <Keycap key={n.key} cap={n.cap} label={n.name} on={keyName === n.key} onPress={() => set({ key: n.key })} />)}
+      </View>
+    </Group>
+  );
+}
+
+function IconCell({ on, onPress, label, children }: { on: boolean; onPress: () => void; label: string; children: React.ReactNode }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }}
+      style={({ pressed }) => [st.cell, on && p.tileOn, pressed && p.pressed]}>
+      {children}
+    </Pressable>
+  );
+}
+
+/** Edits one key in a two-pane sheet: a live preview on the left, everything it does on the right. */
 export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
   initial: Key | null;
   api: Client;
@@ -181,9 +283,22 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
   onClear: () => void;
   onCancel: () => void;
 }) {
-  const [k, setK] = useState<Key>(initial ?? { title: '', icon: { emoji: '⭐️' }, action: { type: 'open', target: '' } });
+  const [k, setK] = useState<Key>(initial ?? { title: '', action: { type: 'open', target: '' } });
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [result, setResult] = useState<string | null>(null);
   const set = (patch: Partial<Key>) => setK(x => ({ ...x, ...patch }));
   const apps = useList('apps', api);
+  const { width, height } = useWindowDimensions();
+
+  // Slides up on a spring; slides down before handing control back.
+  const shown = useSharedValue(0);
+  useEffect(() => { shown.value = withSpring(1, SPRING); }, [shown]);
+  const close = (then: () => void) => {
+    shown.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.cubic) });
+    setTimeout(then, 220);
+  };
+  const scrim = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const sheet = useAnimatedStyle(() => ({ transform: [{ translateY: (1 - shown.value) * height }] }));
 
   const setAction = (action: Action) => {
     const patch: Partial<Key> = { action };
@@ -198,69 +313,191 @@ export function KeyEditor({ initial, api, pages, onSave, onClear, onCancel }: {
     setK(x => ({ ...x, ...patch }));
   };
 
+  const test = () => {
+    setResult(null);
+    api.run(k.action).then(
+      () => { setFeedback(f => ({ n: (f?.n ?? 0) + 1, ok: true })); setResult('Ran on the Mac'); },
+      e => { setFeedback(f => ({ n: (f?.n ?? 0) + 1, ok: false })); setResult(e.message); },
+    );
+  };
+
+  const target = k.action.type === 'open' ? k.action.target : '';
+  const knownApp = !!target && apps.includes(target);
+  const kind = k.icon?.app ? 'app' : k.icon?.symbol ? 'symbol' : k.icon?.emoji ? 'emoji' : 'auto';
+  const sheetW = Math.min(1180, width - 48);
+  const sheetH = height - 48;
+
   return (
-    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onCancel}>
-      <View style={st.sheet}>
-        <View style={st.header}>
-          <Pressable onPress={onCancel} hitSlop={12}><Text style={st.link}>Cancel</Text></Pressable>
-          <Text style={st.headerTitle}>{initial ? 'Edit key' : 'New key'}</Text>
-          <Pressable onPress={() => onSave(k)} hitSlop={12}><Text style={[st.link, st.bold]}>Save</Text></Pressable>
-        </View>
-        <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
-          <View style={s.row}>
-            <Field label="Title">
-              <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Label under the icon" />
-            </Field>
-            <Field label="Icon (emoji)">
-              <Input value={k.icon?.emoji ?? ''} onChangeText={emoji => set({ icon: { emoji } })} style={st.emoji} />
-            </Field>
+    <Modal visible transparent animationType="none" supportedOrientations={['landscape', 'portrait']} onRequestClose={() => close(onCancel)}>
+      <Animated.View style={[StyleSheet.absoluteFill, st.scrim, scrim]} />
+      <View style={st.center} pointerEvents="box-none">
+        <Animated.View style={[st.sheet, { width: sheetW, height: sheetH }, sheet]}>
+          <View style={st.header}>
+            <Pressable onPress={() => close(onCancel)} hitSlop={12}><Text style={st.link}>Cancel</Text></Pressable>
+            <Text style={st.headerTitle}>{initial ? 'Edit key' : 'New key'}</Text>
+            <Pressable onPress={() => close(() => onSave(k))} hitSlop={12} style={({ pressed }) => [st.save, pressed && p.pressed]}>
+              <Text style={st.saveText}>Save</Text>
+            </Pressable>
           </View>
-          {k.action.type === 'open' && !!k.action.target && apps.includes(k.action.target) && (
-            <Chip label={k.icon?.app ? 'Using the app icon' : 'Use the app icon'} on={!!k.icon?.app}
-              onPress={() => set({ icon: k.icon?.app ? { emoji: '⭐️' } : { app: (k.action as any).target } })} />
-          )}
-          <Field label="Colour">
-            <View style={s.wrap}>
-              {KEY_COLORS.map(c => (
-                <Pressable key={String(c)} onPress={() => set({ color: c ?? undefined })}
-                  style={[st.swatch, { backgroundColor: c ?? C.raised }, (k.color ?? null) === c && st.swatchOn]} />
-              ))}
+
+          <View style={st.panes}>
+            <View style={st.left}>
+              <Backdrop calm={0.7} />
+              <View style={st.preview}>
+                <KeyTile k={k} id="editor/0" size={200} api={api} state={null} editing={false} picked={false} feedback={feedback}
+                  onPress={test} onLongPress={() => {}} />
+              </View>
+              <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Title" autoCapitalize="words" style={st.title} />
+              <View style={st.leftActions}>
+                <Pressable onPress={test} style={({ pressed }) => [st.try, pressed && p.pressed]}>
+                  <Symbol name="play.fill" size={14} color={C.bg} />
+                  <Text style={st.tryText}>Try it on the Mac</Text>
+                </Pressable>
+                <Text style={[st.result, feedback?.ok === false && st.resultBad]} numberOfLines={2}>{result ?? ' '}</Text>
+              </View>
+              <View style={st.flex} />
+              {initial && (
+                <Pressable onPress={() => close(onClear)} style={({ pressed }) => [st.clear, pressed && p.pressed]}>
+                  <Symbol name="trash" size={14} color={C.danger} />
+                  <Text style={st.clearText}>Clear this key</Text>
+                </Pressable>
+              )}
             </View>
-          </Field>
-          <Field label="Live status">
-            <View style={s.wrap}>
-              {LIVES.map(l => <Chip key={String(l)} label={l ?? 'none'} on={(k.live ?? null) === l} onPress={() => set({ live: l ?? undefined })} />)}
-            </View>
-          </Field>
-          <Field label="Action">
-            <ActionForm action={k.action} onChange={setAction} api={api} pages={pages} />
-          </Field>
-          <Pressable onPress={() => api.run(k.action).catch(() => {})} style={st.gap}><Text style={st.link}>Test on the Mac</Text></Pressable>
-          {initial && <Pressable onPress={onClear} style={st.gap}><Text style={st.remove}>Clear this key</Text></Pressable>}
-        </ScrollView>
+
+            <ScrollView style={st.flex} contentContainerStyle={st.right} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+              <Group title="What it does">
+                <ActionForm action={k.action} onChange={setAction} api={api} pages={pages} />
+              </Group>
+
+              <View style={st.divider} />
+
+              <Group title="Icon">
+                <View style={st.icons}>
+                  <IconCell label="Automatic" on={kind === 'auto'} onPress={() => set({ icon: undefined })}>
+                    <Symbol name={defaultSymbol(k.action)} size={18} color={kind === 'auto' ? C.bg : C.text} />
+                    <Text style={[st.cellLabel, kind === 'auto' && p.tileLabelOn]}>Auto</Text>
+                  </IconCell>
+                  {knownApp && (
+                    <IconCell label="App icon" on={kind === 'app'} onPress={() => set({ icon: { app: target } })}>
+                      <Image source={api.icon(target)} style={st.appIcon} />
+                      <Text style={[st.cellLabel, kind === 'app' && p.tileLabelOn]}>App</Text>
+                    </IconCell>
+                  )}
+                  <IconCell label="Emoji" on={kind === 'emoji'} onPress={() => set({ icon: { emoji: k.icon?.emoji || '⭐️' } })}>
+                    <Text style={st.emojiCell}>{k.icon?.emoji || '😀'}</Text>
+                    <Text style={[st.cellLabel, kind === 'emoji' && p.tileLabelOn]}>Emoji</Text>
+                  </IconCell>
+                  {SYMBOLS.map(name => (
+                    <IconCell key={name} label={name} on={k.icon?.symbol === name} onPress={() => set({ icon: { symbol: name } })}>
+                      <Symbol name={name} size={20} color={k.icon?.symbol === name ? C.bg : C.text} />
+                    </IconCell>
+                  ))}
+                </View>
+                {kind === 'emoji' && (
+                  <Input value={k.icon?.emoji ?? ''} onChangeText={emoji => set({ icon: { emoji } })} placeholder="Type or pick an emoji"
+                    style={st.emojiInput} />
+                )}
+              </Group>
+
+              <Group title="Colour">
+                <Swatches value={k.color} onChange={color => set({ color })} />
+              </Group>
+
+              <Group title="Live status">
+                <Segmented items={LIVES} value={k.live} onChange={live => set({ live })} />
+                <Text style={st.note}>Shows a reading under the title, updated every second.</Text>
+              </Group>
+            </ScrollView>
+          </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 
 const st = StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: '#101114' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.hairline },
+  flex: { flex: 1 },
+  scrim: { backgroundColor: 'rgba(0,0,0,0.6)' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  sheet: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0e0f12',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: C.hairline,
+  },
   headerTitle: { color: C.text, fontSize: 17, fontWeight: '600' },
-  body: { padding: 24, gap: 20, paddingBottom: 80 },
-  form: { gap: 14 },
-  field: { gap: 8, flex: 1 },
-  fieldLabel: { color: C.label, fontSize: 12, letterSpacing: 1.5, fontWeight: '600', textTransform: 'uppercase' },
-  multi: { minHeight: 90, textAlignVertical: 'top' },
-  mono: { fontFamily: 'Menlo', fontSize: 14 },
-  keyInput: { minWidth: 120 },
-  emoji: { fontSize: 24, textAlign: 'center' },
-  step: { padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline, gap: 10 },
-  stepHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  swatch: { width: 40, height: 40, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline },
-  swatchOn: { borderColor: C.silver, borderWidth: 3 },
   link: { color: C.silver, fontSize: 17 },
-  bold: { fontWeight: '600' },
-  remove: { color: '#e8a0a0', fontSize: 16 },
-  gap: { marginTop: 4 },
+  save: { backgroundColor: C.silver, paddingVertical: 7, paddingHorizontal: 18, borderRadius: 999 },
+  saveText: { color: C.bg, fontSize: 16, fontWeight: '600' },
+  panes: { flex: 1, flexDirection: 'row' },
+
+  left: {
+    width: 360,
+    alignItems: 'center',
+    paddingTop: 44,
+    paddingBottom: 24,
+    paddingHorizontal: 32,
+    overflow: 'hidden',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: C.hairline,
+  },
+  preview: { width: 200, height: 200, marginBottom: 28 },
+  title: { alignSelf: 'stretch', textAlign: 'center', fontSize: 20, fontWeight: '500', backgroundColor: 'rgba(0,0,0,0.35)' },
+  leftActions: { alignItems: 'center', gap: 10, marginTop: 18 },
+  try: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: C.silver, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999 },
+  tryText: { color: C.bg, fontSize: 15, fontWeight: '600' },
+  result: { color: C.dim, fontSize: 13, textAlign: 'center' },
+  resultBad: { color: C.danger },
+  clear: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 8, paddingHorizontal: 14 },
+  clearText: { color: C.danger, fontSize: 15 },
+
+  right: { padding: 32, gap: 32, paddingBottom: 80 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.hairline },
+  group: { gap: 0 },
+  form: { gap: 22 },
+  typeGroup: { gap: 10 },
+  typeGroupTitle: { color: C.dim, fontSize: 13, fontWeight: '500' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  note: { color: C.dim, fontSize: 14, marginTop: 10 },
+  mono: { fontFamily: 'Menlo', fontSize: 14 },
+
+  combo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 },
+  plus: { color: C.dim, fontSize: 24, fontWeight: '200' },
+  capRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 },
+  keyInput: { width: 130, height: 46, paddingVertical: 0 },
+
+  steps: { gap: 12 },
+  card: { padding: 16, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline, gap: 12 },
+  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTitle: { color: C.text, fontSize: 15, fontWeight: '600' },
+  stepFoot: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ghost: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline, marginRight: 12 },
+  ghostText: { color: C.text, fontSize: 15, fontWeight: '500' },
+  delay: { width: 76, textAlign: 'center', paddingVertical: 8, marginTop: 0 },
+
+  icons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cell: {
+    width: 54,
+    height: 54,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.hairline,
+  },
+  cellLabel: { color: C.dim, fontSize: 10, fontWeight: '600', marginTop: -2 },
+  appIcon: { width: 28, height: 28 },
+  emojiCell: { fontSize: 20 },
+  emojiInput: { marginTop: 12, width: 260, fontSize: 22 },
 });

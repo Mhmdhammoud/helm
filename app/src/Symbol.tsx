@@ -1,5 +1,5 @@
 import React from 'react';
-import { requireNativeComponent, type ViewStyle } from 'react-native';
+import { StyleSheet, requireNativeComponent, type ViewStyle } from 'react-native';
 import type { Action } from './types';
 
 type Props = { name: string; size?: number; weight?: 'light' | 'regular' | 'medium' | 'semibold' | 'bold'; color?: string; bounce?: number; style?: ViewStyle };
@@ -7,7 +7,7 @@ const Native = requireNativeComponent<Props>('HelmSymbolView');
 
 /** An SF Symbol. Bump `bounce` to replay the symbol's bounce. */
 export function Symbol({ size = 28, ...p }: Props) {
-  return <Native size={size} {...p} style={[{ width: size * 1.5, height: size * 1.5 }, p.style]} />;
+  return <Native size={size} {...p} style={StyleSheet.flatten([{ width: size * 1.5, height: size * 1.5 }, p.style])} />;
 }
 
 /** The glyph a key shows when it has no icon of its own. */

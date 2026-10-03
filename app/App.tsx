@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { client, useLive, useMacs } from './src/api';
+import { Backdrop } from './src/Backdrop';
 import { DeckScreen } from './src/DeckScreen';
 import { HushPanel } from './src/HushPanel';
 import { Pairing } from './src/Pairing';
@@ -65,6 +66,7 @@ export default function App() {
   return (
     <View style={st.root}>
       <StatusBar hidden />
+      <Backdrop />
       {screen}
     </View>
   );

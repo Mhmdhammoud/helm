@@ -55,7 +55,7 @@ class HelmNative: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
 @objc(HelmSymbolViewManager)
 class HelmSymbolViewManager: RCTViewManager {
   override static func requiresMainQueueSetup() -> Bool { true }
-  override func view() -> UIView! { HelmSymbolView() }
+  override func view() -> UIView! { HelmSymbolView(frame: .zero) }
 }
 
 class HelmSymbolView: UIImageView {
