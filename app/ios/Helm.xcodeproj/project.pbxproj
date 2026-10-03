@@ -10,6 +10,8 @@
 		07F545F1A18BE1BA11E7F41E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		0C80B921A6F3F58F76C31292 /* libPods-Helm.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-Helm.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		43C5BAEDE0FCF634CC9263DC /* HelmNative.m in Sources */ = {isa = PBXBuildFile; fileRef = B05BE106F4F9DC15EC9B3BE8 /* HelmNative.m */; };
+		44694E9FBC731A004B218FFC /* HelmNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B59B8D56FA4CF7BAB544A86 /* HelmNative.swift */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
@@ -22,8 +24,11 @@
 		3B4392A12AC88292D35C810B /* Pods-Helm.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Helm.debug.xcconfig"; path = "Target Support Files/Pods-Helm/Pods-Helm.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-Helm.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Helm.release.xcconfig"; path = "Target Support Files/Pods-Helm/Pods-Helm.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-Helm.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Helm.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7399FF8A3D2D0815943A2D82 /* Helm-Bridging-Header.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "Helm-Bridging-Header.h"; path = "Helm/Helm-Bridging-Header.h"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Helm/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Helm/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		8B59B8D56FA4CF7BAB544A86 /* HelmNative.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HelmNative.swift; path = Helm/HelmNative.swift; sourceTree = "<group>"; };
+		B05BE106F4F9DC15EC9B3BE8 /* HelmNative.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = HelmNative.m; path = Helm/HelmNative.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -47,6 +52,9 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				8B59B8D56FA4CF7BAB544A86 /* HelmNative.swift */,
+				B05BE106F4F9DC15EC9B3BE8 /* HelmNative.m */,
+				7399FF8A3D2D0815943A2D82 /* Helm-Bridging-Header.h */,
 			);
 			name = Helm;
 			sourceTree = "<group>";
@@ -247,6 +255,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				44694E9FBC731A004B218FFC /* HelmNative.swift in Sources */,
+				43C5BAEDE0FCF634CC9263DC /* HelmNative.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -275,6 +285,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.helm.ipad;
 				PRODUCT_NAME = Helm;
+				SWIFT_OBJC_BRIDGING_HEADER = "Helm/Helm-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 2;
@@ -303,6 +314,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.helm.ipad;
 				PRODUCT_NAME = Helm;
+				SWIFT_OBJC_BRIDGING_HEADER = "Helm/Helm-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 2;
 				VERSIONING_SYSTEM = "apple-generic";

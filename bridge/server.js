@@ -1,141 +1,151 @@
 #!/usr/bin/env node
-// Helm bridge: lets the iPad app (../app) drive the headphones and a few Mac actions over the LAN.
-// Headphone commands go through Hush's bin/hush CLI, so the Hush menu-bar app still does the Bluetooth work.
-//   node bridge/server.js          serve on :7733
-//   node bridge/server.js --pair   write app/src/config.json (host, port, token) for the iPad build
-// Every request needs `Authorization: Bearer <token>`; the token lives in ~/Library/Application Support/Helm/token.
-import { execFile } from 'node:child_process';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Helm bridge: the Mac side of the Helm iPad deck. Stores the deck, runs key actions, reports live state.
+//   node bridge/server.js               serve on :7733 and advertise as _helm._tcp (Bonjour)
+//   node bridge/server.js --install     run at login (LaunchAgent); --uninstall removes it
+//   node bridge/server.js --unpair-all  forget every paired iPad
+// The iPad finds this Mac over Bonjour and pairs with a 6-digit code shown here as a notification;
+// after that every request carries that iPad's own bearer token.
+// Anyone with the token can run scripts on this Mac, as with any Stream Deck: keep it on your own network.
+import { spawn } from 'node:child_process';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
+import { appIcon, listApps, makeRunner, realExec } from './actions.js';
+import { BadRequest, loadDeck, saveDeck, validateDeck } from './deck.js';
 
-const run = promisify(execFile);
-const here = p => fileURLToPath(new URL(p, import.meta.url));
-const CLI = process.env.HUSH_CLI || join(homedir(), 'Documents/projects/lab/hush/bin/hush');
+const SUPPORT = process.env.HELM_SUPPORT_DIR || join(homedir(), 'Library/Application Support/Helm');
 const PORT = Number(process.env.HELM_PORT ?? 7733);
-const TOKEN_FILE = process.env.HELM_TOKEN_FILE || join(homedir(), 'Library/Application Support/Helm/token');
-// Tests swap the Mac side for a stub so nothing touches real volume or apps.
-const MAC = process.env.HELM_FAKE_MAC ? fakeMac() : realMac();
+const HUSH_CLI = process.env.HUSH_CLI || join(homedir(), 'Documents/projects/lab/hush/bin/hush');
 
-function token() {
-  if (existsSync(TOKEN_FILE)) return readFileSync(TOKEN_FILE, 'utf8').trim();
-  mkdirSync(dirname(TOKEN_FILE), { recursive: true });
-  const t = randomBytes(24).toString('base64url');
-  writeFileSync(TOKEN_FILE, t);
-  chmodSync(TOKEN_FILE, 0o600);
-  return t;
-}
-
-// Allow-listed headphone commands, mirroring src/commands.ts. Anything else is rejected before it reaches a process.
-const HUSH = {
-  anc: /^(10|[0-9]|up|down|cycle)$/,
-  eq: /^(flat|(bass|mid|treble)\/-?(10|[0-9]))$/,
-  selfvoice: /^(off|low|medium|high)$/,
-  switch: /^[^/]{1,64}$/,
-  callmode: /^(on|off)$/,
-  conversation: /^(on|off)$/,
-};
-
-export function parseHush(cmd) {
-  const [name, ...rest] = String(cmd ?? '').split('/');
-  const arg = rest.join('/');
-  if (!HUSH[name]?.test(arg)) return null;
-  return [name, ...arg.split('/')];
-}
-
-const osa = async script => (await run('osascript', ['-e', script])).stdout.trim();
-
-function realMac() {
-  let lastMic = 75;
-  return {
-    async state() {
-      const [vol, mic] = (await osa('set s to get volume settings\nreturn (output volume of s as text) & "," & (input volume of s as text)')).split(',').map(Number);
-      return { volume: vol, micMuted: mic === 0 };
-    },
-    actions: {
-      async mic() {
-        const mic = Number(await osa('input volume of (get volume settings)'));
-        if (mic > 0) lastMic = mic;
-        await osa(`set volume input volume ${mic > 0 ? 0 : lastMic}`);
-      },
-      'volume-up': () => osa('set volume output volume ((output volume of (get volume settings)) + 6)'),
-      'volume-down': () => osa('set volume output volume ((output volume of (get volume settings)) - 6)'),
-      claude: () => run('open', ['-a', 'Claude']),
-      'sleep-display': () => run('pmset', ['displaysleepnow']),
-    },
-  };
-}
-
-function fakeMac() {
-  const s = { volume: 50, micMuted: false, opened: [] };
-  return {
-    state: async () => ({ volume: s.volume, micMuted: s.micMuted }),
-    actions: {
-      mic: async () => { s.micMuted = !s.micMuted; },
-      'volume-up': async () => { s.volume = Math.min(100, s.volume + 6); },
-      'volume-down': async () => { s.volume = Math.max(0, s.volume - 6); },
-      claude: async () => { s.opened.push('Claude'); },
-      'sleep-display': async () => {},
-    },
-  };
-}
-
-async function state() {
-  const [headphones, mac] = await Promise.all([
-    run(CLI, ['status', '--json'], { timeout: 15000 }).then(r => JSON.parse(r.stdout)).catch(e => ({ status: 'unavailable', error: e.message })),
-    MAC.state().catch(e => ({ error: e.message })),
-  ]);
-  return { headphones, mac };
+// Paired iPads: sha256(token) → { device, pairedAt }. Tokens themselves are never stored.
+const sha = t => createHash('sha256').update(t).digest('hex');
+const loadTokens = file => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {});
+function saveTokens(file, tokens) {
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(tokens, null, 2));
+  chmodSync(file, 0o600);
 }
 
 const readBody = req => new Promise((resolve, reject) => {
   let b = '';
-  req.on('data', c => { b += c; if (b.length > 4096) req.destroy(); });
+  req.on('data', c => { b += c; if (b.length > 1_000_000) req.destroy(); });
   req.on('end', () => { try { resolve(b ? JSON.parse(b) : {}); } catch (e) { reject(e); } });
   req.on('error', reject);
 });
 
-export function serve({ port = PORT, secret = token() } = {}) {
-  const expected = Buffer.from(`Bearer ${secret}`);
-  const authed = h => { const got = Buffer.from(h ?? ''); return got.length === expected.length && timingSafeEqual(got, expected); };
+export function serve({ port = PORT, exec = realExec, hushCli = HUSH_CLI, supportDir = SUPPORT, name = 'Mac' } = {}) {
+  const deckFile = join(supportDir, 'deck.json');
+  const tokensFile = join(supportDir, 'tokens.json');
+  const runner = makeRunner({ exec, hushCli, supportDir });
+  const authed = h => /^Bearer .+/.test(h ?? '') && !!loadTokens(tokensFile)[sha(h.slice(7))];
+
+  // One pairing code at a time, valid 2 minutes, burned after 5 wrong guesses.
+  let pairing = null;
+  const unauthed = {
+    'GET /hello': () => ({ app: 'helm', name }),
+    'POST /pair/start': async () => {
+      pairing = { code: String(randomInt(0, 1e6)).padStart(6, '0'), expires: Date.now() + 120_000, tries: 0 };
+      console.log(`pairing code: ${pairing.code}`);
+      await exec('osascript', ['-e', 'on run argv\ndisplay notification ("Enter " & item 1 of argv & " on your iPad") with title "Helm pairing"\nend run', pairing.code]).catch(() => {});
+      return { name };
+    },
+    'POST /pair': async req => {
+      const { code, device } = await readBody(req);
+      if (!pairing || Date.now() > pairing.expires) throw new BadRequest('no pairing in progress; start again');
+      if (String(code) !== pairing.code) {
+        if (++pairing.tries >= 5) pairing = null;
+        throw new BadRequest('wrong code');
+      }
+      pairing = null;
+      const t = randomBytes(32).toString('base64url');
+      saveTokens(tokensFile, { ...loadTokens(tokensFile), [sha(t)]: { device: String(device ?? 'iPad').slice(0, 64), pairedAt: new Date().toISOString() } });
+      return { token: t, name };
+    },
+  };
   const send = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
 
+  const headphones = () => existsSync(hushCli)
+    ? exec(hushCli, ['status', '--json'], 15000).then(JSON.parse).catch(e => ({ status: 'unavailable', error: e.message }))
+    : Promise.resolve(null);
+
+  const routes = {
+    'GET /deck': () => loadDeck(deckFile),
+    'PUT /deck': async req => saveDeck(deckFile, await readBody(req)),
+    'POST /run': async req => {
+      const { action, id } = await readBody(req);
+      validateDeck({ grid: { cols: 2, rows: 1 }, pages: [{ id: 'run', keys: { 0: { action } } }] });
+      await runner.run(action, String(id ?? 'run'));
+      return { ok: true, toggles: runner.toggles };
+    },
+    'GET /state': async () => {
+      const [mac, hp] = await Promise.all([runner.macState().catch(e => ({ error: e.message })), headphones()]);
+      return { mac, headphones: hp, toggles: runner.toggles };
+    },
+    'GET /apps': () => listApps(),
+    'GET /shortcuts': async () => (await exec('shortcuts', ['list'])).split('\n').filter(Boolean),
+  };
+
   const server = createServer(async (req, res) => {
-    if (!authed(req.headers.authorization)) return send(res, 401, { error: 'unauthorized' });
+    const url = new URL(req.url, 'http://x');
     try {
-      if (req.method === 'GET' && req.url === '/state') return send(res, 200, await state());
-      if (req.method === 'POST' && req.url === '/hush') {
-        const args = parseHush((await readBody(req)).cmd);
-        if (!args) return send(res, 400, { error: 'command not allowed' });
-        await run(CLI, args, { timeout: 15000 });
-        return send(res, 200, { ok: true });
+      const open = unauthed[`${req.method} ${url.pathname}`];
+      if (open) return send(res, 200, await open(req));
+      if (!authed(req.headers.authorization)) return send(res, 401, { error: 'unauthorized' });
+      if (req.method === 'GET' && url.pathname === '/icon') {
+        const file = await appIcon(url.searchParams.get('app') ?? '', supportDir, exec);
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=86400' });
+        return createReadStream(file).pipe(res);
       }
-      if (req.method === 'POST' && req.url === '/mac') {
-        const action = MAC.actions[(await readBody(req)).action];
-        if (!action) return send(res, 400, { error: 'unknown action' });
-        await action();
-        return send(res, 200, { ok: true, mac: await MAC.state() });
-      }
-      send(res, 404, { error: 'not found' });
+      const route = routes[`${req.method} ${url.pathname}`];
+      if (!route) return send(res, 404, { error: 'not found' });
+      send(res, 200, await route(req));
     } catch (e) {
-      send(res, 500, { error: e.message });
+      send(res, e instanceof BadRequest || e instanceof SyntaxError ? 400 : 500, { error: e.message });
     }
   });
   return new Promise(resolve => server.listen(port, '0.0.0.0', () => resolve(server)));
 }
 
-async function pair() {
-  const host = `${(await run('scutil', ['--get', 'LocalHostName'])).stdout.trim()}.local`;
-  const out = here('../app/src/config.json');
-  writeFileSync(out, JSON.stringify({ host, port: PORT, token: token() }, null, 2) + '\n');
-  console.log(`wrote ${out} → http://${host}:${PORT}`);
+const LAUNCH_AGENT = join(homedir(), 'Library/LaunchAgents/app.helm.bridge.plist');
+
+async function install() {
+  mkdirSync(dirname(LAUNCH_AGENT), { recursive: true });
+  const log = join(SUPPORT, 'bridge.log');
+  writeFileSync(LAUNCH_AGENT, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>app.helm.bridge</string>
+  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${fileURLToPath(import.meta.url)}</string></array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${log}</string><key>StandardErrorPath</key><string>${log}</string>
+</dict></plist>
+`);
+  await uninstall(true);
+  await realExec('launchctl', ['bootstrap', `gui/${process.getuid()}`, LAUNCH_AGENT]);
+  console.log(`Helm bridge installed; it starts at login. Log: ${log}`);
+}
+
+async function uninstall(quiet) {
+  await realExec('launchctl', ['bootout', `gui/${process.getuid()}/app.helm.bridge`]).catch(() => {});
+  if (!quiet) { rmSync(LAUNCH_AGENT, { force: true }); console.log('Helm bridge uninstalled.'); }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes('--pair')) await pair();
-  else { await serve(); console.log(`helm bridge on :${PORT}`); }
+  const arg = process.argv[2];
+  if (arg === '--install') await install();
+  else if (arg === '--uninstall') await uninstall();
+  else if (arg === '--unpair-all') { rmSync(join(SUPPORT, 'tokens.json'), { force: true }); console.log('Forgot every paired iPad.'); }
+  else {
+    const name = await realExec('scutil', ['--get', 'ComputerName']).catch(() => 'Mac');
+    await serve({ name });
+    // dns-sd ships with macOS; it keeps the Bonjour record alive for as long as it runs.
+    const ad = spawn('dns-sd', ['-R', name, '_helm._tcp', 'local', String(PORT)], { stdio: 'ignore' });
+    process.on('exit', () => ad.kill());
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
+    console.log(`helm bridge "${name}" on :${PORT}`);
+  }
 }

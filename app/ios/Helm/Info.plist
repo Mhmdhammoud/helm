@@ -34,7 +34,11 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Helm talks to the Helm bridge on your Mac to control your headphones.</string>
+	<string>Helm finds and controls the Macs running the Helm bridge on your network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_helm._tcp</string>
+	</array>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

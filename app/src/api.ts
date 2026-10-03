@@ -1,81 +1,90 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import config from './config.json';
+import { NativeModules } from 'react-native';
+import type { Action, Deck, Mac, State } from './types';
 
-// Shapes come from the Hush app's state.json (see ../../src/useHeadset.ts) plus the bridge's Mac block.
-export type Device = { mac: string; name: string; connected: boolean; isHost: boolean };
-export type Headphones = {
-  status: string;
-  error?: string | null;
-  name?: string | null;
-  battery?: number | null;
-  hoursRemaining?: number | null;
-  anc?: { level: number; enabled: boolean } | null;
-  eq?: { bass: number; mid: number; treble: number } | null;
-  selfVoice?: 'off' | 'low' | 'medium' | 'high' | null;
-  conversation?: boolean | null;
-  callMode?: boolean;
-  inCall?: boolean;
-  devices?: Device[];
+const Native = NativeModules.HelmNative as {
+  browse(timeoutMs: number): Promise<{ name: string; host: string; port: number }[]>;
+  load(): Promise<string | null>;
+  save(json: string): Promise<void>;
+  getConstants?: () => { deviceName: string };
+  deviceName?: string;
 };
-export type Mac = { volume?: number; micMuted?: boolean; error?: string };
-export type State = { headphones: Headphones; mac: Mac };
+export const deviceName = Native.getConstants?.().deviceName ?? Native.deviceName ?? 'iPad';
+export const browse = (ms = 2500) => Native.browse(ms);
 
-const BASE = `http://${config.host}:${config.port}`;
-const HEADERS = { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' };
+const base = (m: { host: string; port: number }) => `http://${m.host}:${m.port}`;
 
-async function call(path: string, body?: object) {
-  const r = await fetch(BASE + path, {
-    method: body ? 'POST' : 'GET',
-    headers: HEADERS,
-    body: body && JSON.stringify(body),
+async function request(m: { host: string; port: number; token?: string }, method: string, path: string, body?: unknown) {
+  const r = await fetch(base(m) + path, {
+    method,
+    headers: { 'content-type': 'application/json', ...(m.token && { authorization: `Bearer ${m.token}` }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`${r.status} ${(await r.json().catch(() => ({}))).error ?? ''}`.trim());
-  return r.json();
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(json.error ?? `HTTP ${r.status}`), { status: r.status });
+  return json;
 }
 
-// ponytail: 1s polling over the LAN; switch the bridge to a WebSocket push if it ever feels laggy.
-const POLL_MS = 1000;
+export const pairStart = (m: { host: string; port: number }) => request(m, 'POST', '/pair/start');
+export const pairFinish = async (m: { name: string; host: string; port: number }, code: string): Promise<Mac> => {
+  const { token, name } = await request(m, 'POST', '/pair', { code, device: deviceName });
+  return { name: name ?? m.name, host: m.host, port: m.port, token };
+};
 
-export function useBridge() {
+export function client(m: Mac) {
+  return {
+    deck: (): Promise<Deck> => request(m, 'GET', '/deck'),
+    saveDeck: (d: Deck): Promise<Deck> => request(m, 'PUT', '/deck', d),
+    run: (action: Action, id?: string) => request(m, 'POST', '/run', { action, id }),
+    state: (): Promise<State> => request(m, 'GET', '/state'),
+    apps: (): Promise<string[]> => request(m, 'GET', '/apps'),
+    shortcuts: (): Promise<string[]> => request(m, 'GET', '/shortcuts'),
+    icon: (app: string) => ({ uri: `${base(m)}/icon?app=${encodeURIComponent(app)}`, headers: { authorization: `Bearer ${m.token}` } }),
+  };
+}
+export type Client = ReturnType<typeof client>;
+
+/** Paired Macs and which one is active, persisted on the iPad. */
+export function useMacs() {
+  const [store, setStore] = useState<{ macs: Mac[]; current: string | null } | null>(null);
+  useEffect(() => {
+    Native.load().then(s => setStore(s ? JSON.parse(s) : { macs: [], current: null }), () => setStore({ macs: [], current: null }));
+  }, []);
+  const update = useCallback((next: { macs: Mac[]; current: string | null }) => {
+    setStore(next);
+    Native.save(JSON.stringify(next));
+  }, []);
+  const current = store?.macs.find(m => m.host === store.current) ?? null;
+  return {
+    loaded: store !== null,
+    macs: store?.macs ?? [],
+    current,
+    add: (m: Mac) => update({ macs: [...(store?.macs ?? []).filter(x => x.host !== m.host), m], current: m.host }),
+    select: (host: string | null) => store && update({ ...store, current: host }),
+    forget: (host: string) => store && update({ macs: store.macs.filter(m => m.host !== host), current: store.current === host ? null : store.current }),
+  };
+}
+
+// ponytail: 1s polling over the LAN; switch to a WebSocket push if it ever feels laggy.
+export function useLive(api: Client | null) {
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState<string | null>(null);
-
+  const apiRef = useRef(api);
+  apiRef.current = api;
   const refresh = useCallback(async () => {
+    if (!apiRef.current) return;
     try {
-      setState(await call('/state'));
+      setState(await apiRef.current.state());
       setError(null);
     } catch (e: any) {
       setError(e.message ?? String(e));
     }
   }, []);
-
   useEffect(() => {
+    setState(null);
     refresh();
-    const t = setInterval(refresh, POLL_MS);
+    const t = setInterval(refresh, 1000);
     return () => clearInterval(t);
-  }, [refresh]);
-
-  // Latest-wins per command family, so dragging a dial sends at most one command per 120ms.
-  const pending = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const hush = useCallback(
-    (cmd: string) => {
-      const key = cmd.split('/').slice(0, cmd.startsWith('eq/') ? 2 : 1).join('/');
-      clearTimeout(pending.current[key]);
-      pending.current[key] = setTimeout(() => {
-        call('/hush', { cmd }).then(refresh, e => setError(e.message));
-      }, 120);
-    },
-    [refresh],
-  );
-
-  const mac = useCallback(
-    (action: string) =>
-      call('/mac', { action }).then(
-        r => setState(s => (s ? { ...s, mac: r.mac } : s)),
-        e => setError(e.message),
-      ),
-    [],
-  );
-
-  return { state, error, hush, mac, host: config.host };
+  }, [api, refresh]);
+  return { state, error, refresh };
 }
