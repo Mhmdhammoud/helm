@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Canvas, DashPathEffect, Group, LinearGradient, Path, RoundedRect, Shadow, Skia, vec } from 'react-native-skia';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -163,12 +162,6 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
     onDeactivate: e => dragRef.current?.onEnd(e.absoluteX, e.absoluteY, e.canceled),
   });
 
-  // Canvases overhang the key by `pad` so shadows and glows fade out instead of clipping.
-  const pad = Math.round(size * 0.14);
-  const canvas = { position: 'absolute' as const, left: -pad, top: -pad, width: W + pad * 2, height: H + pad * 2 };
-  const rect = Skia.XYWHRect(1, 1, W - 2, H - 2);
-  const rrect = Skia.RRectXY(rect, radius, radius);
-  const outline = Skia.PathBuilder.Make().addRRect(rrect).build();
   const lit = live.on;
   const tint = k?.color;
   const glyph = lit ? C.bg : live.alert ? C.danger : C.text;
@@ -186,47 +179,26 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
       accessibilityRole="button"
       accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}>
       <Animated.View style={[{ width: W, height: H }, body]}>
-        <Canvas style={canvas}>
-          <Group transform={[{ translateX: pad }, { translateY: pad }]}>
-          {k && appOnly ? (
-            picked ? <Path path={outline} style="stroke" strokeWidth={3} color={C.silver} /> : null
-          ) : k ? (
-            <>
-              <RoundedRect rect={rrect}>
-                <LinearGradient start={vec(0, 0)} end={vec(0, H)} colors={lit ? ['#f1f3f6', '#b9bfc7'] : ['#22252a', '#121316']} />
-                <Shadow dx={0} dy={size * 0.04} blur={size * 0.08} color="#000000aa" />
-              </RoundedRect>
-              {tint && !lit && (
-                <RoundedRect rect={rrect}>
-                  <LinearGradient start={vec(0, 0)} end={vec(W, H)} colors={[`${tint}66`, `${tint}1f`]} />
-                </RoundedRect>
-              )}
-              {/* bevel: light catches the top edge, the bottom falls away */}
-              <Path path={outline} style="stroke" strokeWidth={1.2}>
-                <LinearGradient start={vec(0, 0)} end={vec(0, H)} colors={[lit ? '#ffffffcc' : '#ffffff40', '#ffffff08', '#00000060']} />
-              </Path>
-              {live.alert && <Path path={outline} style="stroke" strokeWidth={2} color={C.danger} />}
-              {picked && <Path path={outline} style="stroke" strokeWidth={3} color={C.silver} />}
-              {level != null && !widget && (
-                <>
-                  <RoundedRect x={size * 0.22} y={size * 0.86} width={size * 0.56} height={3} r={1.5} color={lit ? '#00000022' : '#ffffff18'} />
-                  <RoundedRect x={size * 0.22} y={size * 0.86} width={Math.max(3, size * 0.56 * Math.min(1, level))} height={3} r={1.5}
-                    color={live.alert ? C.danger : lit ? C.bg : C.silver} />
-                </>
-              )}
-            </>
-          ) : (
-            // Outside edit mode an empty slot is just a faint well; the dashed "drop here" outline is for editing.
-            editing ? (
-              <Path path={outline} style="stroke" strokeWidth={1.2} color="#ffffff38">
-                <DashPathEffect intervals={[6, 6]} />
-              </Path>
-            ) : (
-              <RoundedRect rect={rrect} color="rgba(255,255,255,0.02)" />
-            )
-          )}
-          </Group>
-        </Canvas>
+        {/* Plain views, not Skia: a page of keys (and the library's dozens) appears at once instead of canvas by canvas. */}
+        {k && appOnly ? null : k ? (
+          <>
+            <View style={[StyleSheet.absoluteFill, st.plate, { borderRadius: radius, shadowRadius: size * 0.05, shadowOffset: { width: 0, height: size * 0.04 } },
+              lit ? st.faceLit : st.faceDark]} />
+            {tint && !lit && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, experimental_backgroundImage: `linear-gradient(135deg, ${tint}66, ${tint}1f)` }]} />}
+            {/* bevel: light catches the top edge, the bottom falls away */}
+            <View style={[StyleSheet.absoluteFill, st.bevel, { borderRadius: radius }, lit && st.bevelLit]} />
+            {live.alert && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 2, borderColor: C.danger }]} />}
+            {level != null && !widget && (
+              <View style={[st.levelTrack, { left: W * 0.22, top: H * 0.86, width: W * 0.56, backgroundColor: lit ? '#00000022' : '#ffffff18' }]}>
+                <View style={[st.levelBar, { width: `${Math.max(5, 100 * Math.min(1, level))}%`, backgroundColor: live.alert ? C.danger : lit ? C.bg : C.silver }]} />
+              </View>
+            )}
+          </>
+        ) : (
+          // Outside edit mode an empty slot is just a faint well; the dashed "drop here" outline is for editing.
+          <View style={[StyleSheet.absoluteFill, { borderRadius: radius }, editing ? st.emptyEdit : st.empty]} />
+        )}
+        {picked && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 3, borderColor: C.silver }]} />}
 
         {live.art && !widget && (
           <View style={[st.art, { width: W - 4, height: H - 4, borderRadius: radius - 1 }]} pointerEvents="none">
@@ -235,15 +207,8 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
           </View>
         )}
 
-        <Animated.View style={[StyleSheet.absoluteFill, ring]} pointerEvents="none">
-          <Canvas style={canvas}>
-            <Group transform={[{ translateX: pad }, { translateY: pad }]}>
-            <Path path={outline} style="stroke" strokeWidth={2.5} color={feedback?.ok === false ? C.danger : C.silver}>
-              <Shadow dx={0} dy={0} blur={8} color={feedback?.ok === false ? C.danger : '#ffffffaa'} />
-            </Path>
-            </Group>
-          </Canvas>
-        </Animated.View>
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, ring, st.ring, { borderRadius: radius },
+          feedback?.ok === false ? { borderColor: C.danger, shadowColor: C.danger } : null]} />
 
         {widget && k && (
           <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
@@ -292,4 +257,14 @@ const st = StyleSheet.create({
   face: { fontWeight: '600', fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
   title: { fontWeight: '600', marginTop: 4, letterSpacing: 0.2 },
   sub: { fontWeight: '500', fontVariant: ['tabular-nums'] },
+  plate: { shadowColor: '#000', shadowOpacity: 0.65 },
+  faceDark: { backgroundColor: '#1a1c20', experimental_backgroundImage: 'linear-gradient(to bottom, #22252a, #121316)' },
+  faceLit: { backgroundColor: '#d5d9de', experimental_backgroundImage: 'linear-gradient(to bottom, #f1f3f6, #b9bfc7)' },
+  bevel: { borderWidth: 1.2, borderTopColor: 'rgba(255,255,255,0.25)', borderLeftColor: 'rgba(255,255,255,0.1)', borderRightColor: 'rgba(255,255,255,0.1)', borderBottomColor: 'rgba(0,0,0,0.38)' },
+  bevelLit: { borderTopColor: 'rgba(255,255,255,0.8)' },
+  levelTrack: { position: 'absolute', height: 3, borderRadius: 1.5, overflow: 'hidden' },
+  levelBar: { height: '100%', borderRadius: 1.5 },
+  empty: { backgroundColor: 'rgba(255,255,255,0.02)' },
+  emptyEdit: { borderWidth: 1.2, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.22)' },
+  ring: { borderWidth: 2.5, borderColor: C.silver, shadowColor: '#fff', shadowOpacity: 0.7, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
 });
