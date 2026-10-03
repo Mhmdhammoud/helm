@@ -25,6 +25,7 @@ const GROUPS: { title: string; nested: boolean; types: TypeDef[] }[] = [
       { type: 'shortcut', label: 'Shortcut', symbol: 'square.stack.3d.up.fill', make: () => ({ type: 'shortcut', name: '' }) },
       { type: 'script', label: 'Run command', symbol: 'apple.terminal', make: () => ({ type: 'script', command: '' }) },
       { type: 'system', label: 'System', symbol: 'lock.fill', make: () => ({ type: 'system', what: 'lock' }) },
+      { type: 'fans', label: 'Fans', symbol: 'fan', make: () => ({ type: 'fans', mode: 'next' }) },
     ],
   },
   {
@@ -217,6 +218,18 @@ export function ActionForm({ action, onChange, api, pages, nested }: {
             { value: 'sleep-display', label: 'Turn off display', symbol: 'moon.fill' },
             { value: 'screensaver', label: 'Screen saver', symbol: 'sparkles.tv' },
           ]} />
+        </Group>
+      )}
+      {action.type === 'fans' && (
+        <Group title="Fans">
+          <Options value={action.mode} onChange={mode => set({ mode })} items={[
+            { value: 'next', label: 'Next preset', symbol: 'fan' },
+            { value: 'auto', label: 'Auto (the Mac decides)', symbol: 'fan' },
+            { value: 'low', label: 'Low', symbol: 'signal-low' },
+            { value: 'mid', label: 'Mid', symbol: 'signal-medium' },
+            { value: 'high', label: 'High', symbol: 'signal-high' },
+          ]} />
+          <Text style={st.note}>The first time, the Mac asks for an admin password. Above 95° the fans go back to Auto.</Text>
         </Group>
       )}
       {action.type === 'hush' && (

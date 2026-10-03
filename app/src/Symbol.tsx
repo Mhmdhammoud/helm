@@ -127,6 +127,7 @@ export function defaultSymbol(a: Action, live?: { micMuted?: boolean; muted?: bo
     case 'back': return 'helm:page-back';
     case 'multi': return 'helm:multi';
     case 'toggle': return 'helm:toggle';
+    case 'fans': return { low: 'signal-low', mid: 'signal-medium', high: 'signal-high' }[a.mode as string] ?? 'fan';
   }
 }
 

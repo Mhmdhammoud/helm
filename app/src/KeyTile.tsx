@@ -66,7 +66,7 @@ export function liveView(k: Key, state: State | null, id: string): LiveView {
       const t = state?.thermal;
       if (!t) return {};
       const fan = t.fans[0];
-      return { face: t.cpu == null ? '–' : `${t.cpu}°`, sub: fan ? `Fan ${fan.rpm} rpm` : 'No fan', level: t.cpu == null ? undefined : t.cpu / 105, alert: (t.cpu ?? 0) >= 95 };
+      return { face: t.cpu == null ? '–' : `${t.cpu}°`, sub: fan ? (t.mode && t.mode !== 'auto' ? `Fan ${t.mode}` : `Fan ${fan.rpm} rpm`) : 'No fan', level: t.cpu == null ? undefined : t.cpu / 105, alert: (t.cpu ?? 0) >= 95 };
     }
     case 'storage': {
       const d = state?.storage?.[0];

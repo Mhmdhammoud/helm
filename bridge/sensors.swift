@@ -1,6 +1,8 @@
 // `sensors`: prints the Mac's chip temperature and fans as JSON, for the bridge's thermal widget. No root needed:
-// temperatures come from the IOHID event system, fans from reading (never writing) the SMC.
-//   {"cpu": 74.5, "fans": [{"rpm": 1673, "min": 1000, "max": 4900}]}
+// temperatures come from the IOHID event system, fans from reading the SMC.
+//   {"cpu": 74.5, "fans": [{"rpm": 1673, "min": 1000, "max": 4900, "mode": 0, "target": 1673}]}
+// `sensors fan auto|low|mid|high` sets the fans (mode 1 = forced to a target rpm, 0 = the Mac decides). Writing the SMC
+// needs root, so the bridge installs a setuid-root copy of this binary for that, after asking for an admin password.
 import Foundation
 import IOKit
 
@@ -64,10 +66,32 @@ func num(_ k: String) -> Double? {
   return nil
 }
 
+func write(_ k: String, _ value: [UInt8]) -> Bool {
+  var i = KeyData(); i.key = fourCC(k); i.data8 = 9
+  guard call(&i), Int(i.keyInfo.0) == value.count else { return false }
+  var w = KeyData(); w.key = fourCC(k); w.keyInfo.0 = i.keyInfo.0; w.data8 = 6 // write
+  withUnsafeMutableBytes(of: &w.bytes) { for (n, b) in value.enumerated() { $0[n] = b } }
+  return call(&w)
+}
+
+let args = CommandLine.arguments
+if args.count == 3 && args[1] == "fan" {
+  guard setuid(0) == 0 else { FileHandle.standardError.write("needs root\n".data(using: .utf8)!); exit(1) }
+  var ok = true
+  for f in 0..<Int(num("FNum") ?? 0) {
+    if args[2] == "auto" { ok = write("F\(f)Md", [0]) && ok; continue }
+    guard let mn = num("F\(f)Mn"), let mx = num("F\(f)Mx"),
+          let rpm = ["low": mn, "mid": (mn + mx) / 2, "high": mx][args[2]] else { exit(2) }
+    ok = write("F\(f)Md", [1]) && write("F\(f)Tg", withUnsafeBytes(of: Float(rpm)) { Array($0) }) && ok
+  }
+  exit(ok ? 0 : 1)
+}
+
 var fans: [[String: Int]] = []
 for f in 0..<Int(num("FNum") ?? 0) {
   guard let rpm = num("F\(f)Ac") else { continue }
-  fans.append(["rpm": Int(rpm), "min": Int(num("F\(f)Mn") ?? 0), "max": Int(num("F\(f)Mx") ?? 0)])
+  fans.append(["rpm": Int(rpm), "min": Int(num("F\(f)Mn") ?? 0), "max": Int(num("F\(f)Mx") ?? 0),
+               "mode": Int(num("F\(f)Md") ?? 0), "target": Int(num("F\(f)Tg") ?? rpm)])
 }
 var out: [String: Any] = ["fans": fans]
 if let t = chipTemp() { out["cpu"] = (t * 10).rounded() / 10 }

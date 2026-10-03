@@ -6,7 +6,7 @@ import { createReadStream, existsSync, rmSync } from 'node:fs';
 import { readdir, realpath, statfs } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
-import { realExec, swiftHelper } from './actions.js';
+import { FAN_BIN, fanMode, realExec, sensorsBin } from './actions.js';
 import { loadDeck } from './deck.js';
 
 const TTL = 2000;
@@ -208,9 +208,15 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     if (want.has('storage')) jobs.push(drives().then(v => { out.storage = v; }, () => {}));
     // Chip temperature and fans, from a small Swift helper (bridge/sensors.swift) built on first use.
     if (want.has('thermal')) {
-      jobs.push(swiftHelper(supportDir, 'sensors1', 'sensors.swift', exec)
+      jobs.push(sensorsBin(supportDir, exec)
         .then(bin => bin && exec(bin, []))
-        .then(o => { if (o) { const t = JSON.parse(o); out.thermal = { cpu: t.cpu == null ? null : Math.round(t.cpu), fans: t.fans ?? [] }; } }, () => {}));
+        .then(o => {
+          if (!o) return;
+          const t = JSON.parse(o), fans = t.fans ?? [], mode = fanMode(fans);
+          out.thermal = { cpu: t.cpu == null ? null : Math.round(t.cpu), fans: fans.map(({ rpm, min, max }) => ({ rpm, min, max })), mode };
+          // A preset never holds the fans back while the chip runs hot: past 95°C they go back to the Mac's control.
+          if (mode !== 'auto' && t.cpu >= 95 && existsSync(FAN_BIN)) exec(FAN_BIN, ['fan', 'auto']).catch(() => {});
+        }, () => {}));
     }
     if (want.has('cpu')) {
       const next = cpus();

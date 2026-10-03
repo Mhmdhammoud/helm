@@ -68,6 +68,24 @@ end run`;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/** Fan presets, in the order a "next" press cycles through them. */
+export const FAN_MODES = ['auto', 'low', 'mid', 'high'];
+/** The setuid-root copy of the sensors helper that may write the SMC; outside the user's folders so only root can swap it. */
+export const FAN_BIN = '/Library/Application Support/Helm/helm-fans2';
+/** The sensors helper (bridge/sensors.swift), built on first use. */
+export const sensorsBin = (supportDir, exec) => swiftHelper(supportDir, 'sensors2', 'sensors.swift', exec);
+/** Which preset the fans are on, from the sensors helper's fan list: auto unless forced, else the nearest target. */
+export function fanMode(fans) {
+  const f = fans?.find(x => x.mode);
+  if (!f) return 'auto';
+  const at = { low: f.min, mid: (f.min + f.max) / 2, high: f.max };
+  return ['low', 'mid', 'high'].reduce((a, b) => (Math.abs(at[b] - f.target) < Math.abs(at[a] - f.target) ? b : a));
+}
+// Installs the helper with the admin password prompt; the password goes to macOS, never to the bridge.
+const INSTALL_FANS = `on run argv
+do shell script "mkdir -p '/Library/Application Support/Helm' && install -o root -g wheel -m 4755 " & quoted form of item 1 of argv & " " & quoted form of item 2 of argv with prompt "Helm Bridge wants to control your Mac's fans." with administrator privileges
+end run`;
+
 // AppleScript goes through one long-lived osascript (runner.js) on the real Mac; an injected `exec` (tests)
 // sees it as plain `osascript -e script args…` calls, as does anyone passing their own `osa`.
 export function makeRunner({
@@ -198,6 +216,21 @@ export function makeRunner({
         await run(on ? a.on : a.off, id);
         toggles[id] = on;
         return;
+      }
+      case 'fans': {
+        let mode = a.mode;
+        if (mode === 'next') {
+          const bin = await sensorsBin(supportDir, exec);
+          const now = bin ? fanMode(JSON.parse(await exec(bin, [])).fans) : 'auto';
+          mode = FAN_MODES[(FAN_MODES.indexOf(now) + 1) % FAN_MODES.length];
+        }
+        if (!FAN_MODES.includes(mode)) throw new BadRequest(`unknown fan mode: ${a.mode}`);
+        if (!existsSync(FAN_BIN)) {
+          const bin = await sensorsBin(supportDir, exec);
+          if (!bin) throw new Error('fans: the helper could not be built (are the Xcode command line tools installed?)');
+          await exec('osascript', ['-e', INSTALL_FANS, bin, FAN_BIN], 120000);
+        }
+        return exec(FAN_BIN, ['fan', mode]);
       }
       case 'page':
       case 'back':

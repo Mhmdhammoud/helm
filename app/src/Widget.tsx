@@ -118,8 +118,8 @@ export function WidgetFace({ k, state, api, width, height, unit }: { k: Key; sta
           <View style={{ flex: tall ? 0 : 1, gap: pad * 0.5 }}>
             {t.fans.length ? t.fans.map((f, i) => (
               <View key={i} style={{ gap: 4 }}>
-                <View style={st.between}>
-                  <Text style={[st.label, { fontSize: small * 0.85 }]}>{t.fans.length > 1 ? `FAN ${i + 1}` : 'FAN'}</Text>
+                <View style={[st.between, { gap: pad * 0.5 }]}>
+                  <Text style={[st.label, { fontSize: small * 0.85, flexShrink: 1 }]} numberOfLines={1}>{t.fans.length > 1 ? `FAN ${i + 1}` : 'FAN'}{t.mode && t.mode !== 'auto' ? ` · ${t.mode.toUpperCase()}` : ''}</Text>
                   <Text style={[st.text, { fontSize: small }]}>{f.rpm} rpm</Text>
                 </View>
                 <View style={[st.track, { height: Math.max(3, unit * 0.025) }]}>

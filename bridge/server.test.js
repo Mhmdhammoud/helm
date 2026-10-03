@@ -1,12 +1,12 @@
 // Drives the bridge over HTTP with a recording `exec`, so nothing runs on the Mac.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import test from 'node:test';
-import { appIcon, dimmable, hotkeyScript, makeRunner, parseHush } from './actions.js';
+import { FAN_BIN, appIcon, dimmable, fanMode, hotkeyScript, makeRunner, parseHush } from './actions.js';
 import { cpuLoad, macBattery, memoryUsed } from './features.js';
 import { defaultDeck, saveDeck, validateDeck } from './deck.js';
 import { makeOsa } from './runner.js';
@@ -122,14 +122,36 @@ test('thermal: the sensors helper is built once and its reading reported', async
   const h = harness();
   const exec = async (cmd, args) => {
     if (cmd === 'swiftc') { h.calls.push([cmd, ...args]); return writeFileSync(args.at(-1), ''); }
-    if (cmd.endsWith('bin/sensors1')) return '{"cpu":77.7,"fans":[{"rpm":1673,"min":1000,"max":4900}]}';
+    if (cmd.endsWith('bin/sensors2')) return '{"cpu":77.7,"fans":[{"rpm":1673,"min":1000,"max":4900,"mode":0,"target":1673}]}';
     return h.exec(cmd, args);
   };
   saveDeck(join(h.dir, 'deck.json'), { grid: { cols: 2, rows: 1 }, pages: [{ id: 'a', keys: { 0: { action: { type: 'open', target: 'x' }, live: 'thermal' } } }] });
   const { makeFeatures } = await import('./features.js');
   const f = makeFeatures({ exec, supportDir: h.dir, deckFile: join(h.dir, 'deck.json') });
-  assert.deepEqual((await f.state()).thermal, { cpu: 78, fans: [{ rpm: 1673, min: 1000, max: 4900 }] });
+  assert.deepEqual((await f.state()).thermal, { cpu: 78, fans: [{ rpm: 1673, min: 1000, max: 4900 }], mode: 'auto' });
   assert.equal(h.calls.filter(c => c[0] === 'swiftc' && /sensors\.swift$/.test(c[2])).length, 1);
+});
+
+test('fans: a preset installs the root helper once (admin prompt), "next" cycles from the current preset', async () => {
+  const h = harness();
+  let fans = { mode: 1, target: 2950 }; // forced to the middle preset
+  const exec = async (cmd, args) => {
+    if (cmd === 'swiftc') return writeFileSync(args.at(-1), '');
+    if (cmd.endsWith('bin/sensors2')) return JSON.stringify({ cpu: 70, fans: [{ rpm: 2900, min: 1000, max: 4900, ...fans }] });
+    return h.exec(cmd, args);
+  };
+  const { run } = makeRunner({ exec, supportDir: h.dir, osa: async () => '' });
+  await run({ type: 'fans', mode: 'next' });
+  const install = h.calls.find(c => c[0] === 'osascript' && /administrator privileges/.test(c[2]));
+  assert.ok(existsSync(FAN_BIN) || install, 'asks for the password to install the helper');
+  if (install) assert.deepEqual(install.slice(3), [join(h.dir, 'bin', 'sensors2'), FAN_BIN]);
+  assert.deepEqual(h.calls.at(-1), [FAN_BIN, 'fan', 'high']);
+  fans = { mode: 1, target: 4900 };
+  await run({ type: 'fans', mode: 'next' });
+  assert.deepEqual(h.calls.at(-1), [FAN_BIN, 'fan', 'auto']);
+  await assert.rejects(run({ type: 'fans', mode: 'max' }), /unknown fan mode/);
+  assert.equal(fanMode([{ min: 1000, max: 4900, mode: 1, target: 1100 }]), 'low');
+  assert.equal(fanMode([{ min: 1000, max: 4900, mode: 0, target: 4900 }]), 'auto');
 });
 
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {

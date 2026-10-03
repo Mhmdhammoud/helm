@@ -7,7 +7,7 @@ export class BadRequest extends Error {}
 
 export const ACTION_TYPES = [
   'hotkey', 'open', 'text', 'media', 'volume', 'shortcut', 'script', 'mic', 'system',
-  'hush', 'page', 'back', 'app', 'multi', 'toggle',
+  'hush', 'page', 'back', 'app', 'multi', 'toggle', 'fans',
 ];
 export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock', 'system', 'weather', 'storage', 'thermal'];
 

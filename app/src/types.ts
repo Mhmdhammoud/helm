@@ -15,7 +15,9 @@ export type Action =
   | { type: 'back' }
   | { type: 'app'; app: 'hush' }
   | { type: 'multi'; steps: Action[]; delayMs?: number }
-  | { type: 'toggle'; on: Action; off: Action };
+  | { type: 'toggle'; on: Action; off: Action }
+  /** Fan presets (Low = the fans' minimum, High = their maximum); `next` cycles Auto → Low → Mid → High. */
+  | { type: 'fans'; mode: 'auto' | 'low' | 'mid' | 'high' | 'next' };
 export type ActionType = Action['type'];
 
 export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather' | 'storage' | 'thermal';
@@ -26,7 +28,7 @@ export type Key = {
   live?: Live;
   /** Widgets span several slots, from this key's slot rightwards and down. */
   span?: { w: number; h: number };
-  /** Weather: the city to show (default: the Mac's time-zone city). */
+  /** Weather: the city to show (default: the city last opened in the Mac's Weather app). */
   place?: string;
   /** Runs instead of `action` when the key is held ≥500ms (outside Edit mode). */
   hold?: Action;
@@ -74,8 +76,8 @@ export type State = {
   weather?: Weather | null;
   /** Drives, the Mac's own first; sizes in bytes. */
   storage?: Drive[];
-  /** Chip temperature in °C (null where the Mac has no readable sensor) and each fan's speed. */
-  thermal?: { cpu: number | null; fans: Fan[] };
+  /** Chip temperature in °C (null where the Mac has no readable sensor), each fan's speed, and the fan preset. */
+  thermal?: { cpu: number | null; fans: Fan[]; mode?: 'auto' | 'low' | 'mid' | 'high' };
 };
 export type Fan = { rpm: number; min: number; max: number };
 export type Drive = { name: string; total: number; free: number };

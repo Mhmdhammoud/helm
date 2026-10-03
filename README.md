@@ -46,11 +46,16 @@ as with any Stream Deck, so pair only your own devices.
   or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
   Mac battery ("AC" on Macs without one), weather. Mac readings are taken only while an iPad is watching.
 - **Widgets**: clock, weather, system (CPU, memory, battery), thermals (chip temperature and fan speed,
-  read without admin rights by a small helper the bridge builds from `bridge/sensors.swift`), storage (a ring per drive: the Mac's disk and
+  read without admin rights by a small helper the bridge builds from `bridge/sensors.swift`; tap to cycle the fans
+  Auto → Low → Mid → High, hold for Activity Monitor), storage (a ring per drive: the Mac's disk and
   anything under /Volumes; red under 10% free) and now playing can span 2×1 up to 3×2
   slots (Widgets in the library, or Size in the editor). Weather comes from Open-Meteo (free, no key;
   the bridge sends it the city name and then its coordinates) for the key's city or, by default, the
   city last opened in the Mac's Weather app (falling back to the time-zone city), refreshed every 15 minutes.
+- **Fans**: Auto, Low (the fans' minimum), Mid and High (their maximum) keys, or the Thermals widget's tap. Writing the
+  fan controller needs root, so the first press asks for an admin password (a macOS dialog) and installs a setuid-root
+  copy of the sensors helper at `/Library/Application Support/Helm/helm-fans2` that only takes `fan auto|low|mid|high`.
+  Above 95°C a preset is dropped and the Mac takes the fans back. Remove with `sudo rm -r "/Library/Application Support/Helm"`.
 - **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
 - **Pages and profiles**: hold a page tab (in Edit) to rename, delete, bind it to an app, or make it
   show the Mac's open apps. A bound page (⚡︎) opens while that app is in front on the Mac.
