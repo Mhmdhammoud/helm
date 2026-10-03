@@ -39,6 +39,14 @@ export function parseHush(cmd) {
   return HUSH[name]?.test(arg) ? [name, ...arg.split('/')] : null;
 }
 
+/**
+ * Whether the brightness keys can dim any connected screen: macOS dims built-in screens and Apple's own
+ * (Studio Display, Pro Display XDR, LG UltraFine), but not other monitors. `sp` is `system_profiler SPDisplaysDataType`.
+ */
+export function dimmable(sp) {
+  return /Connection Type: Internal|Display Type: Built-?in|Studio Display|Pro Display XDR|UltraFine/i.test(sp); // not "Bus: Built-In" (the GPU)
+}
+
 export function hotkeyScript(key, mods = []) {
   const k = String(key ?? '').toLowerCase();
   const using = mods.map(m => MODS[m]).filter(Boolean);
@@ -209,6 +217,15 @@ export function makeRunner({
     }
   }
 
+  let dim = { at: 0, value: true };
+  async function canDim() {
+    if (Date.now() - dim.at > 60_000) {
+      dim.at = Date.now(); // once a minute: displays rarely change and system_profiler is slow
+      dim.value = await exec('system_profiler', ['SPDisplaysDataType']).then(dimmable, () => dim.value);
+    }
+    return dim.value;
+  }
+
   async function macState() {
     const [vol, muted, mic] = (await as('set s to get volume settings\nreturn (output volume of s as text) & "," & (output muted of s as text) & "," & (input volume of s as text)')).split(',');
     const front = await exec('/bin/zsh', ['-c', 'lsappinfo info -only name "$(lsappinfo front)"']).catch(() => '');
@@ -217,6 +234,7 @@ export function makeRunner({
       muted: muted === 'true',
       micMuted: Number(mic) === 0,
       app: /"LSDisplayName"="(.*)"/.exec(front)?.[1] ?? null,
+      dimmable: await canDim(),
     };
   }
 

@@ -257,7 +257,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       swipeX.value = withTiming(-dir * gridW * 0.6, { duration: 140 }, done => { if (done) scheduleOnRN(goTo, to, dir); });
     },
   });
-  const swiped = useAnimatedStyle(() => ({ transform: [{ translateX: swipeX.value }], opacity: 1 - Math.min(0.6, Math.abs(swipeX.value) / gridW) }));
+  // Translate only: the grid's FadeIn entering animation owns its opacity.
+  const swiped = useAnimatedStyle(() => ({ transform: [{ translateX: swipeX.value }] }));
 
   const floating = useAnimatedStyle(() => ({ transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1.08 }] }));
 
@@ -363,7 +364,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                 )}
               </View>
             )}
-            {dials.includes('brightness') && (
+            {dials.includes('brightness') && state?.mac?.dimmable !== false && (
               // macOS can't report brightness, so the fader keeps its own position and nudges the Mac per step.
               <Fader label="BRIGHTNESS" height={portrait ? 200 : Math.min(420, area.h)} format={() => ''}
                 onStep={d => {

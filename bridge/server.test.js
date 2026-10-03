@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import test from 'node:test';
-import { appIcon, hotkeyScript, makeRunner, parseHush } from './actions.js';
+import { appIcon, dimmable, hotkeyScript, makeRunner, parseHush } from './actions.js';
 import { cpuLoad, macBattery, memoryUsed } from './features.js';
 import { defaultDeck, saveDeck, validateDeck } from './deck.js';
 import { makeOsa } from './runner.js';
@@ -95,6 +95,13 @@ test('storage lists the Mac\'s disk first, with free space under total', async (
   const list = await drives();
   assert.ok(list.length >= 1);
   assert.ok(list[0].total > list[0].free && list[0].free > 0);
+});
+
+test('brightness is offered only when a screen can take it', () => {
+  assert.equal(dimmable('XMO G340-CWQB:\n  Main Display: Yes\n  Connection Type: DisplayPort'), false);
+  assert.equal(dimmable('Color LCD:\n  Display Type: Built-in Liquid Retina XDR Display\n  Connection Type: Internal'), true);
+  assert.equal(dimmable('Studio Display:\n  Main Display: Yes'), true);
+  assert.equal(dimmable('Apple M4:\n  Bus: Built-In\nDisplays:\n  XMO G340-CWQB:\n    Main Display: Yes'), false, 'the GPU line is not a screen');
 });
 
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
@@ -228,7 +235,7 @@ test('multi runs steps in order; toggle alternates per key', async t => {
 test('state reports Mac, front app and headphones', async t => {
   const { call } = await start(t);
   const s = (await call('GET', '/state')).body;
-  assert.deepEqual(s.mac, { volume: 44, muted: false, micMuted: false, app: 'zoom.us' });
+  assert.deepEqual(s.mac, { volume: 44, muted: false, micMuted: false, app: 'zoom.us', dimmable: false });
   assert.equal(s.headphones.battery, 30);
   assert.deepEqual((await call('GET', '/shortcuts')).body, ['Morning', 'Focus']);
 });
@@ -334,7 +341,7 @@ test('live push: initial state, changes only, key press echo, heartbeat', async 
   const { next } = live(t, base, token());
   const first = await next(() => true);
   assert.equal(first.t, 'state');
-  assert.deepEqual(first.state.mac, { volume: 44, muted: false, micMuted: false, app: 'zoom.us' });
+  assert.deepEqual(first.state.mac, { volume: 44, muted: false, micMuted: false, app: 'zoom.us', dimmable: false });
   assert.equal(first.state.headphones.battery, 30);
   assert.deepEqual(first.state.toggles, {});
 

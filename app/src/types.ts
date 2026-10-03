@@ -57,7 +57,8 @@ export type Headphones = {
   inCall?: boolean;
   devices?: Device[];
 };
-export type MacState = { volume?: number; muted?: boolean; micMuted?: boolean; app?: string | null; error?: string };
+/** `dimmable`: some connected screen takes the brightness keys (not true of most third-party monitors). */
+export type MacState = { volume?: number; muted?: boolean; micMuted?: boolean; app?: string | null; dimmable?: boolean; error?: string };
 /** `art` is a version id for GET /artwork, null when the track has none. */
 export type NowPlaying = { app: 'Music' | 'Spotify'; title: string; artist: string | null; playing: boolean; art: string | null };
 export type MacBattery = { percent: number | null; charging: boolean; ac: boolean };
