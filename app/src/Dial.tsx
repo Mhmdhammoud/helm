@@ -102,11 +102,12 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   act.current = { moveTo, release };
 
   // Per-touch tracking for the pan below.
-  const t = useRef({ mode: 'turn' as 'turn' | 'slide', cx: 0, cy: 0, lastAngle: 0, lastDx: 0, lastDy: 0 });
+  const t = useRef({ mode: 'turn' as 'turn' | 'slide', cx: 0, cy: 0, x0: 0, y0: 0, lastAngle: 0, lastDx: 0, lastDy: 0 });
   const bipolarRef = useRef(bipolar);
   bipolarRef.current = bipolar;
   const pan = usePanGesture({
     minDistance: 0,
+    enableTrackpadTwoFingerGesture: true, // mouse wheel and trackpad scrolling turn it too
     runOnJS: true,
     onBegin: e => {
       const L = live.current;
@@ -117,11 +118,15 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
       g.cy = e.absoluteY - e.y + L.c;
       g.mode = Math.hypot(e.x - L.c, e.y - L.c) > L.bodyR * 0.85 ? 'turn' : 'slide';
       g.lastAngle = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);
+      g.x0 = e.absoluteX;
+      g.y0 = e.absoluteY;
       g.lastDx = g.lastDy = 0;
     },
     onUpdate: e => {
       const L = live.current;
       const g = t.current;
+      // A scroll moves the gesture but not the pointer, so there's no angle to follow: slide instead.
+      if (g.mode === 'turn' && Math.hypot(e.absoluteX - g.x0, e.absoluteY - g.y0) < 1 && Math.hypot(e.translationX, e.translationY) > 2) g.mode = 'slide';
       let delta: number;
       if (g.mode === 'turn') {
         const a = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);

@@ -55,6 +55,7 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
 
   const pan = usePanGesture({
     minDistance: 0,
+    enableTrackpadTwoFingerGesture: true, // mouse wheel and trackpad scrolling move it too
     runOnJS: true,
     onBegin: () => { r.current.from = r.current.step; },
     onUpdate: e => {
