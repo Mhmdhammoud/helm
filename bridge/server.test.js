@@ -104,6 +104,20 @@ test('brightness is offered only when a screen can take it', () => {
   assert.equal(dimmable('Apple M4:\n  Bus: Built-In\nDisplays:\n  XMO G340-CWQB:\n    Main Display: Yes'), false, 'the GPU line is not a screen');
 });
 
+test('thermal: the sensors helper is built once and its reading reported', async () => {
+  const h = harness();
+  const exec = async (cmd, args) => {
+    if (cmd === 'swiftc') { h.calls.push([cmd, ...args]); return writeFileSync(args.at(-1), ''); }
+    if (cmd.endsWith('bin/sensors1')) return '{"cpu":77.7,"fans":[{"rpm":1673,"min":1000,"max":4900}]}';
+    return h.exec(cmd, args);
+  };
+  saveDeck(join(h.dir, 'deck.json'), { grid: { cols: 2, rows: 1 }, pages: [{ id: 'a', keys: { 0: { action: { type: 'open', target: 'x' }, live: 'thermal' } } }] });
+  const { makeFeatures } = await import('./features.js');
+  const f = makeFeatures({ exec, supportDir: h.dir, deckFile: join(h.dir, 'deck.json') });
+  assert.deepEqual((await f.state()).thermal, { cpu: 78, fans: [{ rpm: 1673, min: 1000, max: 4900 }] });
+  assert.equal(h.calls.filter(c => c[0] === 'swiftc' && /sensors\.swift$/.test(c[2])).length, 1);
+});
+
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
   const h = harness();
   let allowed = true;

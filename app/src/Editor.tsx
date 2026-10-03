@@ -79,6 +79,7 @@ const LIVES: { value: Live | undefined; label: string }[] = [
   { value: 'system', label: 'CPU, memory, battery' },
   { value: 'weather', label: 'Weather' },
   { value: 'storage', label: 'Storage' },
+  { value: 'thermal', label: 'Temperature and fan' },
 ];
 
 // Widget sizes, in slots: wide and big faces for the live kinds that have them.

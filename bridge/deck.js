@@ -9,7 +9,7 @@ export const ACTION_TYPES = [
   'hotkey', 'open', 'text', 'media', 'volume', 'shortcut', 'script', 'mic', 'system',
   'hush', 'page', 'back', 'app', 'multi', 'toggle',
 ];
-export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock', 'system', 'weather', 'storage'];
+export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock', 'system', 'weather', 'storage', 'thermal'];
 
 const key = (title, action, extra = {}) => ({ title, action, ...extra });
 

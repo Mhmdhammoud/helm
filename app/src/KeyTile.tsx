@@ -62,6 +62,12 @@ export function liveView(k: Key, state: State | null, id: string): LiveView {
       const w = state?.weather;
       return w ? { face: `${w.temp}°`, sub: weatherLook(w).label } : { sub: w === null ? 'Unavailable' : undefined };
     }
+    case 'thermal': {
+      const t = state?.thermal;
+      if (!t) return {};
+      const fan = t.fans[0];
+      return { face: t.cpu == null ? '–' : `${t.cpu}°`, sub: fan ? `Fan ${fan.rpm} rpm` : 'No fan', level: t.cpu == null ? undefined : t.cpu / 105, alert: (t.cpu ?? 0) >= 95 };
+    }
     case 'storage': {
       const d = state?.storage?.[0];
       return d ? { face: bytes(d.free), sub: 'free', level: 1 - d.free / d.total, alert: d.free / d.total < 0.1 } : {};
@@ -294,6 +300,7 @@ function shown(k: Key | undefined, state: State | null, id: string) {
     : k.live === 'weather' ? state?.weather
     : k.live === 'nowplaying' ? state?.nowPlaying
     : k.live === 'storage' ? state?.storage
+    : k.live === 'thermal' ? state?.thermal
     : null;
   return JSON.stringify([k.live ? liveView(k, state, id) : null, extra, state?.mac?.muted, state?.mac?.micMuted]);
 }

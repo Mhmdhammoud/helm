@@ -20,7 +20,7 @@ export function weatherLook(w: Pick<Weather, 'code' | 'day'>): { icon: string; l
 }
 
 /** Widget kinds that get a big face when a key spans several slots. */
-export const WIDGET_LIVE = ['clock', 'weather', 'system', 'nowplaying', 'storage'] as const;
+export const WIDGET_LIVE = ['clock', 'weather', 'system', 'nowplaying', 'storage', 'thermal'] as const;
 
 /** 23.6 GB, 1.2 TB: whole numbers from 10 up. */
 export function bytes(n: number) {
@@ -102,6 +102,32 @@ export function WidgetFace({ k, state, api, width, height, unit }: { k: Key; sta
               </View>
             </View>
           ))}
+        </View>
+      );
+    }
+    case 'thermal': {
+      const t = state?.thermal;
+      if (!t) return <Empty text={state ? 'Thermals' : '–'} size={small} />;
+      const hot = (t.cpu ?? 0) >= 95;
+      return (
+        <View style={[st.fill, tall ? { padding: pad * 1.2, justifyContent: 'center', gap: pad } : [st.row, { padding: pad * 1.2, gap: pad * 1.2 }]]}>
+          <View>
+            <Text style={[st.thin, { fontSize: big, color: hot ? C.danger : C.text }]} numberOfLines={1}>{t.cpu == null ? '–' : `${t.cpu}°`}</Text>
+            <Text style={[st.label, { fontSize: small * 0.85 }]}>CHIP</Text>
+          </View>
+          <View style={{ flex: tall ? 0 : 1, gap: pad * 0.5 }}>
+            {t.fans.length ? t.fans.map((f, i) => (
+              <View key={i} style={{ gap: 4 }}>
+                <View style={st.between}>
+                  <Text style={[st.label, { fontSize: small * 0.85 }]}>{t.fans.length > 1 ? `FAN ${i + 1}` : 'FAN'}</Text>
+                  <Text style={[st.text, { fontSize: small }]}>{f.rpm} rpm</Text>
+                </View>
+                <View style={[st.track, { height: Math.max(3, unit * 0.025) }]}>
+                  <View style={[st.bar, { width: `${Math.min(100, Math.max(2, (100 * (f.rpm - f.min)) / Math.max(1, f.max - f.min)))}%`, backgroundColor: C.silver }]} />
+                </View>
+              </View>
+            )) : <Text style={[st.dim, { fontSize: small }]}>No fan</Text>}
+          </View>
         </View>
       );
     }

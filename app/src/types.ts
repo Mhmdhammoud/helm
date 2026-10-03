@@ -18,7 +18,7 @@ export type Action =
   | { type: 'toggle'; on: Action; off: Action };
 export type ActionType = Action['type'];
 
-export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather' | 'storage';
+export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather' | 'storage' | 'thermal';
 export type Key = {
   title?: string;
   icon?: { symbol?: string; emoji?: string; app?: string };
@@ -74,7 +74,10 @@ export type State = {
   weather?: Weather | null;
   /** Drives, the Mac's own first; sizes in bytes. */
   storage?: Drive[];
+  /** Chip temperature in °C (null where the Mac has no readable sensor) and each fan's speed. */
+  thermal?: { cpu: number | null; fans: Fan[] };
 };
+export type Fan = { rpm: number; min: number; max: number };
 export type Drive = { name: string; total: number; free: number };
 /** Open-Meteo: `code` is a WMO weather code. */
 export type Weather = { place: string; temp: number; code: number; day: boolean; hi: number; lo: number };

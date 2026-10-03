@@ -79,17 +79,8 @@ export function makeRunner({
   let lastMic = 75;
 
   // Compiled once on first use; null if that failed (no Xcode tools), and callers fall back to osascript.
-  let helper;
-  function mediakeyBin() {
-    const bin = join(supportDir, 'bin/mediakey3'); // v3: stdin (long-running) mode with a launch warm-up
-    if (existsSync(bin)) return Promise.resolve(bin);
-    helper ??= (async () => {
-      mkdirSync(join(supportDir, 'bin'), { recursive: true });
-      await exec('swiftc', ['-O', fileURLToPath(new URL('./mediakey.swift', import.meta.url)), '-o', bin], 120000);
-      return bin;
-    })().catch(() => null);
-    return helper;
-  }
+  // v3: stdin (long-running) mode with a launch warm-up
+  const mediakeyBin = () => swiftHelper(supportDir, 'mediakey3', 'mediakey.swift', exec);
   // With the real exec the helper stays running (stdin mode) so a press is ~2ms instead of a ~100ms launch.
   // Tests (recording exec) and any failure of the long-running helper use one-shot `mediakey <code>`.
   let keyProc = null;
@@ -269,6 +260,25 @@ function run(argv) {
 }`;
 
 /** Path to a cached 256px PNG of an app's icon (by name or .app path), rendering it on first request. */
+const helpers = new Map();
+/**
+ * Compiles a Swift helper that ships as source (bridge/<source>) into <supportDir>/bin/<name> once, the first
+ * time it's needed. Resolves to its path, or null if it can't be built (no Xcode tools); a failed build isn't retried.
+ * Bump <name> when the source changes, so an old binary isn't reused.
+ */
+export function swiftHelper(supportDir, name, source, exec = realExec) {
+  const bin = join(supportDir, 'bin', name);
+  if (existsSync(bin)) return Promise.resolve(bin);
+  if (!helpers.has(bin)) {
+    helpers.set(bin, (async () => {
+      mkdirSync(join(supportDir, 'bin'), { recursive: true });
+      await exec('swiftc', ['-O', fileURLToPath(new URL(`./${source}`, import.meta.url)), '-o', bin], 120000);
+      return bin;
+    })().catch(() => null));
+  }
+  return helpers.get(bin);
+}
+
 export async function appIcon(name, supportDir, exec = realExec) {
   const safe = String(name).replace(/^\/.*\/|\.app$/g, '').replace(/[^\w .+-]/g, '_').slice(0, 80);
   const file = join(supportDir, 'icons', `${safe}.png`);
