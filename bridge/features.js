@@ -3,6 +3,7 @@
 import { makeOsa } from './runner.js';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, rmSync } from 'node:fs';
+import { readdir, realpath, statfs } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { realExec } from './actions.js';
@@ -64,6 +65,28 @@ export function memoryUsed(vmStat, total = totalmem()) {
 export function macBattery(pmset) {
   const m = /InternalBattery[^\t]*\t(\d+)%;\s*([^;]+);/.exec(pmset);
   return { percent: m ? Number(m[1]) : null, charging: m ? /^(charging|finishing charge)/.test(m[2]) : false, ac: /'AC Power'/.test(pmset) };
+}
+
+/**
+ * Drives with their space in bytes: the Mac's own disk first (its data volume, where the files are, named like
+ * the startup disk), then anything mounted under /Volumes. Tiny volumes (installer images) are left out.
+ */
+export async function drives(volumes = '/Volumes') {
+  let home = 'Mac';
+  const extra = [];
+  for (const name of await readdir(volumes).catch(() => [])) {
+    const path = join(volumes, name);
+    const real = await realpath(path).catch(() => null);
+    if (real === '/') home = name;
+    else if (real) extra.push([name, path]);
+  }
+  const out = [];
+  for (const [name, path] of [[home, '/System/Volumes/Data'], ...extra]) {
+    const s = await statfs(path).catch(() => null);
+    if (!s || s.blocks * s.bsize < 1e9) continue;
+    out.push({ name, total: s.blocks * s.bsize, free: s.bavail * s.bsize });
+  }
+  return out;
 }
 
 export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date.now, fetch = globalThis.fetch }) {
@@ -145,6 +168,7 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     // The system widget shows all three Mac stats.
     if (want.has('system')) ['cpu', 'memory', 'macbattery'].forEach(w => want.add(w));
     if (want.has('weather')) jobs.push(weather(place).then(v => { out.weather = v; }));
+    if (want.has('storage')) jobs.push(drives().then(v => { out.storage = v; }, () => {}));
     if (want.has('cpu')) {
       const next = cpus();
       out.cpu = cpuLoad(prevCpu, next);
@@ -162,6 +186,7 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
       let keys;
       try { keys = loadDeck(deckFile).pages.flatMap(p => Object.values(p.keys ?? {})); } catch { return Promise.resolve({}); }
       const want = new Set(keys.map(k => k.live));
+      want.add('storage'); // cheap (statfs), and lets the library preview the storage widget with real numbers
       // ponytail: one weather place per deck (the first weather key's), add per-key places if people want several cities.
       const place = keys.find(k => k.live === 'weather' && k.place)?.place || homePlace();
       const key = [...want].sort().join() + place;

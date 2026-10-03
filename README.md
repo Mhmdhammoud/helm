@@ -45,7 +45,8 @@ as with any Stream Deck, so pair only your own devices.
 - **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state, now playing (Music
   or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
   Mac battery ("AC" on Macs without one), weather. Mac readings are taken only while an iPad is watching.
-- **Widgets**: clock, weather, system (CPU, memory, battery) and now playing can span 2×1 up to 3×2
+- **Widgets**: clock, weather, system (CPU, memory, battery), storage (a ring per drive: the Mac's disk and
+  anything under /Volumes; red under 10% free) and now playing can span 2×1 up to 3×2
   slots (Widgets in the library, or Size in the editor). Weather comes from Open-Meteo (free, no key;
   the bridge sends it the city name and then its coordinates) for the key's city or, by default, the
   Mac's time-zone city, refreshed every 15 minutes.

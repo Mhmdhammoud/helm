@@ -90,6 +90,13 @@ test('widgets: the system widget samples all Mac stats, weather comes from Open-
   assert.equal((await call('PUT', '/deck', deck)).status, 400, 'span is bounded');
 });
 
+test('storage lists the Mac\'s disk first, with free space under total', async () => {
+  const { drives } = await import('./features.js');
+  const list = await drives();
+  assert.ok(list.length >= 1);
+  assert.ok(list[0].total > list[0].free && list[0].free > 0);
+});
+
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
   const h = harness();
   let allowed = true;

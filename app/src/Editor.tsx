@@ -78,6 +78,7 @@ const LIVES: { value: Live | undefined; label: string }[] = [
   { value: 'macbattery', label: 'Mac battery' },
   { value: 'system', label: 'CPU, memory, battery' },
   { value: 'weather', label: 'Weather' },
+  { value: 'storage', label: 'Storage' },
 ];
 
 // Widget sizes, in slots: wide and big faces for the live kinds that have them.

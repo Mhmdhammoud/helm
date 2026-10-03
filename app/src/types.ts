@@ -18,7 +18,7 @@ export type Action =
   | { type: 'toggle'; on: Action; off: Action };
 export type ActionType = Action['type'];
 
-export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather';
+export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather' | 'storage';
 export type Key = {
   title?: string;
   icon?: { symbol?: string; emoji?: string; app?: string };
@@ -71,7 +71,10 @@ export type State = {
   memory?: number;
   macBattery?: MacBattery;
   weather?: Weather | null;
+  /** Drives, the Mac's own first; sizes in bytes. */
+  storage?: Drive[];
 };
+export type Drive = { name: string; total: number; free: number };
 /** Open-Meteo: `code` is a WMO weather code. */
 export type Weather = { place: string; temp: number; code: number; day: boolean; hi: number; lo: number };
 export type RunningApp = { name: string; path: string };

@@ -17,7 +17,7 @@ import type { Client } from './api';
 import { Symbol, defaultSymbol } from './Symbol';
 import type { Key, State } from './types';
 import { C, SPRING } from './theme';
-import { WIDGET_LIVE, WidgetFace, weatherLook } from './Widget';
+import { WIDGET_LIVE, WidgetFace, bytes, weatherLook } from './Widget';
 
 /** `title` replaces the key's title, `face` replaces its icon with big text, `art` is a GET /artwork version shown behind it. */
 type LiveView = { sub?: string; on?: boolean; alert?: boolean; level?: number; title?: string; face?: string; art?: string };
@@ -61,6 +61,10 @@ export function liveView(k: Key, state: State | null, id: string): LiveView {
     case 'weather': {
       const w = state?.weather;
       return w ? { face: `${w.temp}°`, sub: weatherLook(w).label } : { sub: w === null ? 'Unavailable' : undefined };
+    }
+    case 'storage': {
+      const d = state?.storage?.[0];
+      return d ? { face: bytes(d.free), sub: 'free', level: 1 - d.free / d.total, alert: d.free / d.total < 0.1 } : {};
     }
     case 'clock': {
       const now = new Date();
@@ -213,7 +217,7 @@ function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, 
             {tint && !lit && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, experimental_backgroundImage: `linear-gradient(135deg, ${tint}66, ${tint}1f)` }]} />}
             {/* bevel: light catches the top edge, the bottom falls away */}
             <View style={[StyleSheet.absoluteFill, st.bevel, { borderRadius: radius }, lit && st.bevelLit]} />
-            {live.alert && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 2, borderColor: C.danger }]} />}
+            {live.alert && !widget && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 2, borderColor: C.danger }]} />}
             {level != null && !widget && (
               <View style={[st.levelTrack, { left: W * 0.22, top: H * 0.86, width: W * 0.56, backgroundColor: lit ? '#00000022' : '#ffffff18' }]}>
                 <View style={[st.levelBar, { width: `${Math.max(5, 100 * Math.min(1, level))}%`, backgroundColor: live.alert ? C.danger : lit ? C.bg : C.silver }]} />
@@ -289,6 +293,7 @@ function shown(k: Key | undefined, state: State | null, id: string) {
   const extra = k.live === 'system' ? [state?.cpu, state?.memory, state?.macBattery]
     : k.live === 'weather' ? state?.weather
     : k.live === 'nowplaying' ? state?.nowPlaying
+    : k.live === 'storage' ? state?.storage
     : null;
   return JSON.stringify([k.live ? liveView(k, state, id) : null, extra, state?.mac?.muted, state?.mac?.micMuted]);
 }
