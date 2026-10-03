@@ -11,35 +11,14 @@ export const ACTION_TYPES = [
 ];
 export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock', 'system', 'weather', 'storage', 'thermal'];
 
-const key = (title, action, extra = {}) => ({ title, action, ...extra });
-
-/** First-run deck: a few everyday keys; the library in Edit has the rest. */
+/** First-run deck: one empty page. Nothing is preset; people add keys from the library in Edit. */
 export function defaultDeck() {
   return {
     version: 1,
     grid: { cols: 6, rows: 4 },
     autoProfile: true,
     dials: ['volume'],
-    pages: [
-      {
-        id: 'main',
-        name: 'Main',
-        keys: {
-          0: key('Claude', { type: 'open', target: 'Claude' }, { icon: { app: 'Claude' } }),
-          1: key('Safari', { type: 'open', target: 'Safari' }, { icon: { app: 'Safari' } }),
-          2: key('Terminal', { type: 'open', target: 'Terminal' }, { icon: { app: 'Terminal' } }),
-          3: key('Mic', { type: 'mic' }, { live: 'mic' }),
-          6: key('Prev', { type: 'media', key: 'previous' }),
-          7: key('Play', { type: 'media', key: 'play' }),
-          8: key('Next', { type: 'media', key: 'next' }),
-          12: key('Screenshot', { type: 'hotkey', key: '4', mods: ['cmd', 'shift'] }),
-          13: key('Spotlight', { type: 'hotkey', key: 'space', mods: ['cmd'] }),
-          14: key('Shrug', { type: 'text', text: '¯\\_(ツ)_/¯' }),
-          15: key('Lock', { type: 'system', what: 'lock' }),
-          16: key('Display', { type: 'system', what: 'sleep-display' }),
-        },
-      },
-    ],
+    pages: [{ id: 'main', name: 'Main', keys: {} }],
   };
 }
 

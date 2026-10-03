@@ -342,6 +342,7 @@ test('running apps, brightness keys, hold actions and page kinds', async t => {
   assert.equal((await run({ type: 'media', key: 'toString' })).status, 400);
 
   const deck = defaultDeck();
+  deck.pages[0].keys[0] = { action: { type: 'open', target: 'Safari' } };
   deck.pages[0].keys[0].hold = { type: 'open', target: 'Notes' };
   assert.equal((await call('PUT', '/deck', deck)).status, 200);
   deck.pages[0].keys[0].hold = { type: 'rm' };

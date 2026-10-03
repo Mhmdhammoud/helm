@@ -399,7 +399,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       <Text style={[st.status, flash && st.err]} numberOfLines={1}>
         {flash ?? (editing
           ? drag ? (drag.from != null ? 'Drop on a slot: keys there move aside. Drop on the library to remove it.' : 'Drop it on any slot: keys there move aside.') : 'Tap a key to change it  ·  hold and drag to move it  ·  tap empty space when done'
-          : !state ? `Connecting to ${macName}…` : state.mac?.app ? `${state.mac.app} is in front` : '')}
+          : !state ? `Connecting to ${macName}…` : page.kind !== 'running' && !Object.keys(page.keys).length ? 'Hold anywhere to add keys' : state.mac?.app ? `${state.mac.app} is in front` : '')}
       </Text>
       )}
 
