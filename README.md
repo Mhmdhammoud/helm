@@ -1,7 +1,13 @@
 # Helm
 
 A Stream Deck for your Macs, on an iPad. Pages of keys you set up on the iPad; pressing one runs
-an action on the paired Mac. Hush (the Bose NC700 controller) lives inside as a full-screen panel.
+an action on the paired Mac. Live widgets show the Mac's stats, weather, storage, thermals and what's
+playing, and dials turn the volume. If you use [Hush](https://github.com/Mhmdhammoud/hush) (a Bose NC700
+controller), its headphone controls live inside as a full-screen panel.
+
+**Needs:** a Mac (tested on macOS 26, Apple silicon) with Node 20+ and the Xcode command line tools (`xcode-select --install`;
+the bridge compiles its small Swift helpers on first use), and an iPad on iPadOS 17+ on the same network.
+There's no App Store build yet: you build the iPad app yourself with Xcode (see below).
 
 - `app/`: iPad app, React Native 0.83 + react-native-skia (landscape, iPad only, bundle `app.helm.ipad`)
 - `bridge/`: the Mac side, Node stdlib only. Stores the deck, runs actions, reports live state,
@@ -36,14 +42,14 @@ as with any Stream Deck, so pair only your own devices.
   are the app icon edge to edge) plus any live reading.
 - **Edit**: a library opens beside the keys (below them in portrait) with your open apps first,
   then common apps, media, Mac, headphones, meetings, live keys and your macOS Shortcuts; search
-  finds the rest. Hold an item briefly and drag it onto a slot.
-  Hold and drag a key to move it (dropping on another key swaps them) or onto the library to remove
-  it. Tap a key to open its editor: what it does, what it does when held, icon (Lucide + Helm's own
+  finds the rest. Hold an item briefly and drag it onto a slot. Hold anywhere on the grid to enter Edit,
+  tap empty space to leave it. Drag a key to move it: two single keys swap, anything bigger pushes what it
+  lands on aside. The corner handle resizes a key; the "−" badge removes it. Tap a key to open its editor: what it does, what it does when held, icon (Lucide + Helm's own
   set, the app's icon, or an emoji), tint and live status, with a live preview and "Try it on the Mac".
 - **Actions**: open app/file/URL, key combo, type text, media (play/pause, next, previous), volume
   (real volume keys, so the Mac shows its volume bar), mic mute, macOS Shortcut, shell command,
   system (lock, sleep display, screensaver), Hush command, Hush panel, go to page, back, several
-  steps (with a delay), on/off (alternates two actions).
+  steps (with a delay), on/off (alternates two actions), fan presets.
 - **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state, now playing (Music
   or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
   Mac battery ("AC" on Macs without one), weather. Mac readings are taken only while an iPad is watching.
@@ -95,7 +101,7 @@ Live state: WebSocket `GET /live` (same port, same bearer header). The first mes
 every second, and only while an iPad is connected. Close code 4001 means the iPad was unpaired.
 `GET /state` still returns the full state in one request.
 State: `~/Library/Application Support/Helm/` (`deck.json`, `tokens.json` with hashed tokens, `id`,
-`icons/`, `bin/mediakey`).
+`icons/`, `bin/` for the compiled Swift helpers).
 
 ## Test
 
@@ -103,3 +109,7 @@ State: `~/Library/Application Support/Helm/` (`deck.json`, `tokens.json` with ha
 cd bridge && npm test                     # recording exec: nothing runs on the Mac
 cd app && npx jest && npx tsc --noEmit
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).

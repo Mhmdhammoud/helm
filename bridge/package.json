@@ -2,11 +2,11 @@
   "name": "helm-bridge",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Mac-side LAN bridge for the Helm iPad app, stdlib only",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "pair": "node server.js --pair",
     "test": "node --test"
   }
 }
