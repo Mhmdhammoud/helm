@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Canvas, DashPathEffect, Group, LinearGradient, Path, RoundedRect, Shadow, Skia, vec } from 'react-native-skia';
 import Animated, {
@@ -74,11 +75,20 @@ function useMinuteTick(on: boolean) {
   }, [on]);
 }
 
+/** Hold-then-drag: the pan activates after `holdMs` without moving, so quick swipes still scroll the library. */
+export type DragProps = {
+  holdMs: number;
+  onStart: (x: number, y: number) => void;
+  onMove: (x: number, y: number) => void;
+  /** `canceled`: the system took the touch away; put the key back. */
+  onEnd: (x: number, y: number, canceled: boolean) => void;
+};
+
 /** Result of the last press, so the key can flash: `n` changes on every press. */
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-export function KeyTile({ k, id, size, api, state, editing, picked, feedback, holdMs, onPress, onLongPress }: {
+export function KeyTile({ k, id, size, api, state, editing, picked, feedback, drag, onPress, onLongPress }: {
   k?: Key;
   id: string;
   size: number;
@@ -87,8 +97,8 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, ho
   editing: boolean;
   picked: boolean;
   feedback?: Feedback;
-  /** Long-press delay; the library uses a short one so picking a key up feels immediate. */
-  holdMs?: number;
+  /** Makes the key draggable (edit mode, library). */
+  drag?: DragProps;
   onPress: () => void;
   onLongPress: () => void;
 }) {
@@ -125,6 +135,17 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, ho
   }));
   const ring = useAnimatedStyle(() => ({ opacity: flash.value }));
 
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+  const pan = usePanGesture({
+    enabled: !!drag,
+    activateAfterLongPress: drag?.holdMs ?? 300,
+    runOnJS: true,
+    onActivate: e => dragRef.current?.onStart(e.absoluteX, e.absoluteY),
+    onUpdate: e => dragRef.current?.onMove(e.absoluteX, e.absoluteY),
+    onDeactivate: e => dragRef.current?.onEnd(e.absoluteX, e.absoluteY, e.canceled),
+  });
+
   // Canvases overhang the key by `pad` so shadows and glows fade out instead of clipping.
   const pad = Math.round(size * 0.14);
   const canvas = { position: 'absolute' as const, left: -pad, top: -pad, width: size + pad * 2, height: size + pad * 2 };
@@ -138,10 +159,11 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, ho
   const level = live.level;
 
   return (
+    <GestureDetector gesture={pan}>
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={holdMs ?? (!editing && k?.hold ? 500 : 350)}
+      delayLongPress={!editing && k?.hold ? 500 : 350}
       onPressIn={() => { press.value = withSpring(1, SPRING); }}
       onPressOut={() => { press.value = withSpring(0, SPRING); }}
       accessibilityRole="button"
@@ -231,6 +253,7 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, ho
         </View>
       </Animated.View>
     </Pressable>
+    </GestureDetector>
   );
 }
 

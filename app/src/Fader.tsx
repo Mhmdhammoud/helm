@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
 import { Canvas, Group, LinearGradient, Path, RoundedRect, Shadow, Skia, vec } from 'react-native-skia';
 import { C, SPRING } from './theme';
@@ -52,29 +53,27 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
     flush();
   };
 
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => { r.current.from = r.current.step; },
-      onPanResponderMove: (_, g) => {
-        const { steps: n } = r.current;
-        const v = Math.min(n, Math.max(0, r.current.from - (g.dy / travel) * n));
-        pos.value = v;
-        r.current.busyUntil = Date.now() + 1500;
-        const s = Math.round(v);
-        if (s !== r.current.step) {
-          send(s - r.current.step);
-          r.current.step = s;
-          setStep(s);
-        }
-      },
-      onPanResponderRelease: () => {
-        pos.value = withSpring(r.current.step, SPRING);
-        r.current.busyUntil = Date.now() + 1500;
-      },
-    }),
-  ).current;
+  const pan = usePanGesture({
+    minDistance: 0,
+    runOnJS: true,
+    onBegin: () => { r.current.from = r.current.step; },
+    onUpdate: e => {
+      const { steps: n } = r.current;
+      const v = Math.min(n, Math.max(0, r.current.from - (e.translationY / travel) * n));
+      pos.value = v;
+      r.current.busyUntil = Date.now() + 1500;
+      const s = Math.round(v);
+      if (s !== r.current.step) {
+        send(s - r.current.step);
+        r.current.step = s;
+        setStep(s);
+      }
+    },
+    onFinalize: () => {
+      pos.value = withSpring(r.current.step, SPRING);
+      r.current.busyUntil = Date.now() + 1500;
+    },
+  });
 
   const cx = width / 2;
   const slot = Skia.RRectXY(Skia.XYWHRect(cx - 4, top, 8, travel), 4, 4);
@@ -94,7 +93,8 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
 
   return (
     <View style={st.wrap}>
-      <View style={{ width, height }} {...pan.panHandlers} accessibilityRole="adjustable" accessibilityLabel={`${label} ${step}`}
+      <GestureDetector gesture={pan}>
+      <View style={{ width, height }} accessibilityRole="adjustable" accessibilityLabel={`${label} ${step}`}
         accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={e => {
           const d = e.nativeEvent.actionName === 'increment' ? 1 : -1;
@@ -125,6 +125,7 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
           </Group>
         </Canvas>
       </View>
+      </GestureDetector>
       {(format ? format(step) : String(step)) !== '' && <Text style={st.value}>{format ? format(step) : step}</Text>}
       <Text style={st.label}>{label}</Text>
     </View>

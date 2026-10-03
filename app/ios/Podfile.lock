@@ -2618,6 +2618,35 @@ PODS:
     - React-perflogger (= 0.83.10)
     - React-utils (= 0.83.10)
     - SocketRocket
+  - RNGestureHandler (3.3.0):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - RNWorklets (>= 0.8.0)
+    - SocketRocket
+    - Yoga
   - RNReanimated (4.6.0):
     - boost
     - DoubleConversion
@@ -2971,6 +3000,7 @@ DEPENDENCIES:
   - ReactAppDependencyProvider (from `build/generated/ios/ReactAppDependencyProvider`)
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
@@ -3141,6 +3171,8 @@ EXTERNAL SOURCES:
     :path: build/generated/ios/ReactCodegen
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNGestureHandler:
+    :path: "../node_modules/react-native-gesture-handler"
   RNReanimated:
     :path: "../node_modules/react-native-reanimated"
   RNSVG:
@@ -3230,6 +3262,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 38aa49711b58e4f7e27033cb218bb804eadc7356
   ReactCodegen: d90f4973af8a40c3bd7c17a5f1ba9267ef27d744
   ReactCommon: ddccb5fdac38485ab6cf9e2a5099b31d96a42328
+  RNGestureHandler: 4f702f69dd943a697288cbc26a852a668308d535
   RNReanimated: f6492d54f2f1471b6e1e0a13f60f0b59e0ea6dd5
   RNSVG: c98cd946f63499d08b8e3a204b6c31b4b14adb1b
   RNWorklets: 59102fee699c8557adae292a2b35191325a9b081

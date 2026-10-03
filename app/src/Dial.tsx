@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { GestureDetector, usePanGesture, useSimultaneousGestures, useTapGesture } from 'react-native-gesture-handler';
 import { useDerivedValue, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Canvas, Circle, Group, LinearGradient, Path, RadialGradient, Shadow, Skia, SweepGradient, vec } from 'react-native-skia';
 import { C } from './theme';
@@ -100,61 +101,58 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   const act = useRef({ moveTo, release });
   act.current = { moveTo, release };
 
-  const pan = useMemo(() => {
-    let mode: 'turn' | 'slide' = 'turn';
-    let cx = 0, cy = 0, lastAngle = 0, lastDx = 0, lastDy = 0, travel = 0, lastTap = 0;
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: e => {
-        const { pageX, pageY, locationX, locationY } = e.nativeEvent;
-        const L = live.current;
-        touching.current = true;
-        settle.current && clearTimeout(settle.current);
-        cx = pageX - locationX + L.c;
-        cy = pageY - locationY + L.c;
-        mode = Math.hypot(locationX - L.c, locationY - L.c) > L.bodyR * 0.85 ? 'turn' : 'slide';
-        lastAngle = angleAt(pageX, pageY, cx, cy);
-        lastDx = lastDy = travel = 0;
-      },
-      onPanResponderMove: (e, g) => {
-        const L = live.current;
-        const { pageX, pageY } = e.nativeEvent;
-        travel = Math.max(travel, Math.hypot(g.dx, g.dy));
-        let delta: number;
-        if (mode === 'turn') {
-          const a = angleAt(pageX, pageY, cx, cy);
-          // Right at the centre the angle is noise; just track it without moving.
-          delta = Math.hypot(pageX - cx, pageY - cy) < L.c * 0.2 ? 0 : (turn(lastAngle, a) / SWEEP) * L.range;
-          lastAngle = a;
-        } else {
-          // Up or right increases; a long, calm throw for the whole range.
-          delta = ((g.dx - lastDx - (g.dy - lastDy)) / Math.max(240, L.size * 1.5)) * L.range;
-        }
-        lastDx = g.dx;
-        lastDy = g.dy;
-        if (delta) act.current.moveTo(L.cur + delta, false);
-      },
-      onPanResponderRelease: () => {
-        const L = live.current;
-        const now = Date.now();
-        if (travel < 8) {
-          if (now - lastTap < 320 && (doubleTap.current || bipolar)) {
-            lastTap = 0;
-            if (doubleTap.current) doubleTap.current();
-            else act.current.moveTo((L.min + L.max) / 2, true);
-          } else lastTap = now;
-        }
-        act.current.moveTo(L.step, true);
-        act.current.release();
-      },
-      onPanResponderTerminate: () => {
-        act.current.moveTo(live.current.step, true);
-        act.current.release();
-      },
-    });
-  }, [bipolar]);
+  // Per-touch tracking for the pan below.
+  const t = useRef({ mode: 'turn' as 'turn' | 'slide', cx: 0, cy: 0, lastAngle: 0, lastDx: 0, lastDy: 0 });
+  const bipolarRef = useRef(bipolar);
+  bipolarRef.current = bipolar;
+  const pan = usePanGesture({
+    minDistance: 0,
+    runOnJS: true,
+    onBegin: e => {
+      const L = live.current;
+      const g = t.current;
+      touching.current = true;
+      settle.current && clearTimeout(settle.current);
+      g.cx = e.absoluteX - e.x + L.c;
+      g.cy = e.absoluteY - e.y + L.c;
+      g.mode = Math.hypot(e.x - L.c, e.y - L.c) > L.bodyR * 0.85 ? 'turn' : 'slide';
+      g.lastAngle = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);
+      g.lastDx = g.lastDy = 0;
+    },
+    onUpdate: e => {
+      const L = live.current;
+      const g = t.current;
+      let delta: number;
+      if (g.mode === 'turn') {
+        const a = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);
+        // Right at the centre the angle is noise; just track it without moving.
+        delta = Math.hypot(e.absoluteX - g.cx, e.absoluteY - g.cy) < L.c * 0.2 ? 0 : (turn(g.lastAngle, a) / SWEEP) * L.range;
+        g.lastAngle = a;
+      } else {
+        // Up or right increases; a long, calm throw for the whole range.
+        delta = ((e.translationX - g.lastDx - (e.translationY - g.lastDy)) / Math.max(240, L.size * 1.5)) * L.range;
+      }
+      g.lastDx = e.translationX;
+      g.lastDy = e.translationY;
+      if (delta) act.current.moveTo(L.cur + delta, false);
+    },
+    onFinalize: () => {
+      act.current.moveTo(live.current.step, true);
+      act.current.release();
+    },
+  });
+  // Recognised alongside the pan, so the knob still turns from the first touch.
+  const twoTaps = useTapGesture({
+    numberOfTaps: 2,
+    enabled: !!onDoubleTap || !!bipolar,
+    runOnJS: true,
+    onActivate: () => {
+      const L = live.current;
+      if (doubleTap.current) doubleTap.current();
+      else if (bipolarRef.current) { act.current.moveTo((L.min + L.max) / 2, true); act.current.release(); }
+    },
+  });
+  const gesture = useSimultaneousGestures(pan, twoTaps);
 
   // Static geometry.
   const { track, ticks, majors } = useMemo(() => {
@@ -210,9 +208,9 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   const accessibilityActions = [{ name: 'increment' as const }, { name: 'decrement' as const }];
 
   return (
+    <GestureDetector gesture={gesture}>
     <View
       style={{ width: size, height: size }}
-      {...pan.panHandlers}
       accessible
       accessibilityRole="adjustable"
       accessibilityLabel={label}
@@ -270,6 +268,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
         </Text>
       </View>
     </View>
+    </GestureDetector>
   );
 }
 

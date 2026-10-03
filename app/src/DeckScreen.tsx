@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, PanResponder, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Dial } from './Dial';
 import { Fader } from './Fader';
 import { KeyEditor } from './Editor';
-import { KeyTile, type Feedback } from './KeyTile';
+import { KeyTile, type DragProps, type Feedback } from './KeyTile';
 import { usePageKeys } from './running';
 import { Library } from './Library';
 import { Symbol } from './Symbol';
@@ -80,6 +80,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const startDrag = (k: Key, from?: string) => {
     rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; });
     gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; });
+    dragRef.current = { k, from }; // a hold released at once ends before the next render
     setDrag({ k, from });
   };
   const slotAt = (px: number, py: number) => {
@@ -109,36 +110,21 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     updatePage({ keys });
     flashKey(`${page.id}/${slot}`, true);
   };
-  const dropRef = useRef(drop);
-  dropRef.current = drop;
-  const slotAtRef = useRef(slotAt);
-  const lastTouch = useRef({ x: 0, y: 0 });
-  slotAtRef.current = slotAt;
-
-  // Takes over the touch from the pressed key/library tile once a drag has started.
-  const dragPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponderCapture: () => dragRef.current != null,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderMove: (e) => {
-        const { pageX, pageY } = e.nativeEvent;
-        lastTouch.current = { x: pageX, y: pageY };
-        dx.value = pageX - origin.current.root.x;
-        dy.value = pageY - origin.current.root.y;
-        setHover(slotAtRef.current(pageX, pageY));
-      },
-      onPanResponderRelease: (e) => dropRef.current(slotAtRef.current(e.nativeEvent.pageX, e.nativeEvent.pageY), e.nativeEvent.pageX, e.nativeEvent.pageY),
-      // Releasing over the library's native scroll view arrives as a terminate, not a release.
-      onPanResponderTerminate: () => dropRef.current(slotAtRef.current(lastTouch.current.x, lastTouch.current.y), lastTouch.current.x, lastTouch.current.y),
-    }),
-  ).current;
-
-  // A drag picked up but let go without moving never reaches dragPan (it only captures moves), so it would
-  // stay "active" and keep the library from scrolling. Deferred so a real drop (release) goes first.
-  const endHeldDrag = () => {
-    const d = dragRef.current;
-    if (d) setTimeout(() => { if (dragRef.current === d) { setDrag(null); setHover(null); } }, 50);
+  // Gesture handlers for a draggable key (a grid key in edit mode, or a library key when `from` is unset).
+  const dragProps = (k: Key, from?: string, holdMs = 300): DragProps => ({
+    holdMs,
+    onStart: (x, y) => { startDrag(k, from); moveDrag(x, y); },
+    onMove: moveDrag,
+    onEnd: (x, y, canceled) => {
+      if (!canceled) return drop(slotAt(x, y), x, y);
+      setDrag(null);
+      setHover(null);
+    },
+  });
+  const moveDrag = (x: number, y: number) => {
+    dx.value = x - origin.current.root.x;
+    dy.value = y - origin.current.root.y;
+    setHover(slotAt(x, y));
   };
 
   const press = (slot: string) => {
@@ -235,7 +221,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   ];
 
   return (
-    <View style={st.root} ref={rootRef} {...dragPan.panHandlers} onTouchEnd={endHeldDrag} onTouchCancel={endHeldDrag}>
+    <View style={st.root} ref={rootRef}>
       <View style={st.top}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.tabScroll} contentContainerStyle={st.tabsRow}>
           <PageTabs tabs={tabs} current={pageId}
@@ -264,13 +250,15 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                     const slotId = `${page.id}/${slot}`;
                     const lifted = drag?.from === slot;
                     return (
-                      <View key={slot} style={lifted && st.lifted}>
+                      // Never flattened: if this view only appeared when the drag starts (opacity), the native tree
+                      // would re-parent the key mid-gesture and cancel the drag.
+                      <View key={slot} collapsable={false} style={{ opacity: lifted ? 0.25 : 1 }}>
                         <KeyTile id={slotId} k={keys[slot]} size={size} api={api} state={state}
                           editing={editing && !drag} picked={hover === slot && !lifted} feedback={feedback[slotId]} onPress={() => press(slot)}
+                          drag={editing && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
                           onLongPress={() => {
                             const held = keys[slot]?.hold;
-                            if (!editing) return held ? fire(keys[slot], held, slotId, `${slotId}:hold`) : setEditing(true);
-                            if (page.keys[slot]) startDrag(page.keys[slot], slot);
+                            if (!editing) held ? fire(keys[slot], held, slotId, `${slotId}:hold`) : setEditing(true);
                           }} />
                       </View>
                     );
@@ -282,8 +270,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         </View>
 
         {editing ? (
-          <Library api={api} state={state} dragging={!!drag} style={portrait ? st.libraryPortrait : undefined}
-            onDragStart={k => startDrag(k)} />
+          <Library api={api} state={state} style={portrait ? st.libraryPortrait : undefined} drag={k => dragProps(k, undefined, 150)} />
         ) : (dials.length > 0) && (
           // Landscape: a column to the right of the keys. Portrait: a row under them.
           <View style={portrait ? st.stripRow : st.strip}>
@@ -291,7 +278,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
               <View style={portrait ? st.dialsRow : st.dials}>
                 {dials.includes('volume') && (
                   // Double-tap mutes and unmutes; turning it unmutes too, since it moves by the volume keys.
-                  <View style={state?.mac?.muted && st.inert}>
+                  <View collapsable={false} style={{ opacity: state?.mac?.muted ? 0.5 : 1 }}>
                     <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={portrait ? 230 : 180}
                       label={state?.mac?.muted ? 'MUTED' : 'VOLUME'}
                       format={v => (v === Math.round((state?.mac?.volume ?? 0) / 5) ? String(state?.mac?.volume ?? 0) : String(v * 5))}
@@ -436,7 +423,6 @@ const st = StyleSheet.create({
   mainPortrait: { flexDirection: 'column' },
   toolsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: -10, marginBottom: 12 },
   libraryPortrait: { width: '100%', flex: 1, marginTop: 16 },
-  lifted: { opacity: 0.25 },
   inert: { opacity: 0.5 },
   floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
   status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },

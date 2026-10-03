@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+// Gesture handler's ScrollView, so it hands the touch over when a key's hold-to-drag activates.
+import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { FadeInRight, FadeOutRight } from 'react-native-reanimated';
 import type { Client } from './api';
-import { KeyTile } from './KeyTile';
+import { KeyTile, type DragProps } from './KeyTile';
 import { Symbol } from './Symbol';
 import type { Key, State } from './types';
 import { C } from './theme';
@@ -73,13 +75,12 @@ const FAVOURITE_APPS = ['Safari', 'Google Chrome', 'Arc', 'Mail', 'Messages', 'S
   'Spotify', 'Finder', 'Terminal', 'Visual Studio Code', 'Cursor', 'Xcode', 'Figma', 'Notion', 'Claude', 'ChatGPT', 'System Settings'];
 
 /** Edit-mode panel of ready-made keys: hold one briefly and drag it onto a slot. */
-export function Library({ api, state, dragging, style, onDragStart }: {
+export function Library({ api, state, style, drag }: {
   style?: StyleProp<ViewStyle>;
   api: Client;
   state: State | null;
-  onDragStart: (k: Key) => void;
-  /** While a key is being dragged the list must not scroll, or it steals the touch. */
-  dragging: boolean;
+  /** Drag handlers for one library key. */
+  drag: (k: Key) => DragProps;
 }) {
   const [apps, setApps] = useState<string[]>([]);
   const [shortcuts, setShortcuts] = useState<string[]>([]);
@@ -118,14 +119,14 @@ export function Library({ api, state, dragging, style, onDragStart }: {
         <TextInput value={q} onChangeText={setQ} placeholder="Apps, actions, shortcuts" placeholderTextColor={C.dim}
           style={st.input} autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" />
       </View>
-      <ScrollView scrollEnabled={!dragging} contentContainerStyle={st.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={st.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {sections.map(s => (
           <View key={s.title} style={st.section}>
             <Text style={st.title}>{s.title.toUpperCase()}</Text>
             <View style={st.grid}>
               {s.keys.map((key, i) => (
                 <KeyTile key={`${s.title}${i}`} id={`lib/${s.title}/${i}`} k={key} size={tile} api={api} state={state}
-                  editing={false} picked={false} holdMs={150} onPress={() => {}} onLongPress={() => onDragStart(key)} />
+                  editing={false} picked={false} drag={drag(key)} onPress={() => {}} onLongPress={() => {}} />
               ))}
             </View>
           </View>

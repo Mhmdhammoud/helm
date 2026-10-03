@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { client, useLive, useMacs } from './src/api';
 import { Backdrop } from './src/Backdrop';
 import { DeckScreen } from './src/DeckScreen';
@@ -67,13 +68,13 @@ export default function App() {
   }
 
   return (
-    <View style={st.root} onStartShouldSetResponderCapture={() => { idle.touched(); return false; }}>
+    <GestureHandlerRootView style={st.root} onStartShouldSetResponderCapture={() => { idle.touched(); return false; }}>
       <StatusBar hidden />
       <Backdrop />
       {screen}
       {idle.idle && <IdleScreen onWake={idle.wake} />}
       <Splash ready={macs.loaded && (!macs.current || !!deck || !!deckError)} />
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
