@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInRight, FadeOutRight } from 'react-native-reanimated';
 import type { Client } from './api';
 import { KeyTile } from './KeyTile';
@@ -76,7 +76,8 @@ const FAVOURITE_APPS = ['Safari', 'Google Chrome', 'Arc', 'Mail', 'Messages', 'S
  * Edit-mode side panel of ready-made keys. Tap one to drop it into the next empty slot,
  * or hold and drag it onto any slot.
  */
-export function Library({ api, state, dragging, onAdd, onDragStart }: {
+export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
+  style?: StyleProp<ViewStyle>;
   api: Client;
   state: State | null;
   onAdd: (k: Key) => void;
@@ -111,7 +112,7 @@ export function Library({ api, state, dragging, onAdd, onDragStart }: {
   }, [apps, shortcuts, running, query]);
 
   return (
-    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={st.panel}>
+    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={[st.panel, style]}>
       <View style={st.search}>
         <Symbol name="magnifyingglass" size={14} color={C.dim} />
         <TextInput value={q} onChangeText={setQ} placeholder="Apps, actions, shortcuts" placeholderTextColor={C.dim}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, PanResponder, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Dial } from './Dial';
@@ -50,6 +50,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const page = deck.pages.find(p => p.id === pageId)!;
   const keys = usePageKeys(api, page, editing);
   const { cols, rows } = deck.grid;
+  const win = useWindowDimensions();
+  const portrait = win.height > win.width;
 
   // Profiles: a page bound to an app opens while that app is in front, and closes when it isn't.
   const auto = useRef<string | null>(null);
@@ -93,12 +95,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     const r = Math.floor((py - y) / (size + gap));
     return c >= 0 && c < cols && r >= 0 && r < rows ? String(r * cols + c) : null;
   };
-  const drop = (slot: string | null, px = 0) => {
+  const drop = (slot: string | null, px = 0, py = 0) => {
     const d = dragRef.current;
     setDrag(null);
     setHover(null);
     // A grid key dropped on the library panel (right of the grid) is removed.
-    if (d?.from != null && slot == null && px > origin.current.grid.x + cols * (size + gap)) {
+    // (Right of the grid in landscape, below it in portrait.)
+    if (d?.from != null && slot == null && (px > origin.current.grid.x + cols * (size + gap) || py > origin.current.grid.y + rows * (size + gap))) {
       setKey(d.from, null);
       return;
     }
@@ -132,9 +135,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         dy.value = pageY - origin.current.root.y;
         setHover(slotAtRef.current(pageX, pageY));
       },
-      onPanResponderRelease: (e) => dropRef.current(slotAtRef.current(e.nativeEvent.pageX, e.nativeEvent.pageY), e.nativeEvent.pageX),
+      onPanResponderRelease: (e) => dropRef.current(slotAtRef.current(e.nativeEvent.pageX, e.nativeEvent.pageY), e.nativeEvent.pageX, e.nativeEvent.pageY),
       // Releasing over the library's native scroll view arrives as a terminate, not a release.
-      onPanResponderTerminate: () => dropRef.current(slotAtRef.current(lastTouch.current.x, lastTouch.current.y), lastTouch.current.x),
+      onPanResponderTerminate: () => dropRef.current(slotAtRef.current(lastTouch.current.x, lastTouch.current.y), lastTouch.current.x, lastTouch.current.y),
     }),
   ).current;
 
@@ -238,7 +241,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         </View>
       </View>
 
-      <View style={st.main}>
+      <View style={[st.main, portrait && st.mainPortrait]}>
         <View style={st.grid} onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
           {size > 0 && (
             <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
@@ -267,27 +270,31 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         </View>
 
         {editing ? (
-          <Library api={api} state={state} dragging={!!drag} onAdd={k => addKey(k)} onDragStart={k => startDrag(k)} />
-        ) : dials.length > 0 && (
-          <View style={st.dials}>
-            {dials.includes('volume') && (
-              <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={180} label="VOLUME"
-                format={v => String(v * 5)} onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
+          <Library api={api} state={state} dragging={!!drag} style={portrait ? st.libraryPortrait : undefined}
+            onAdd={k => addKey(k)} onDragStart={k => startDrag(k)} />
+        ) : (dials.length > 0) && (
+          // Landscape: a column to the right of the keys. Portrait: a row under them.
+          <View style={portrait ? st.stripRow : st.strip}>
+            {(dials.includes('volume') || dials.includes('anc')) && (
+              <View style={portrait ? st.dialsRow : st.dials}>
+                {dials.includes('volume') && (
+                  <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={180} label="VOLUME"
+                    format={v => String(v * 5)} onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
+                )}
+                {dials.includes('anc') && state?.headphones && (
+                  <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180} label="NOISE"
+                    onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
+                )}
+              </View>
             )}
-            {dials.includes('anc') && state?.headphones && (
-              <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180} label="NOISE"
-                onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
+            {dials.includes('brightness') && (
+              // macOS can't report brightness, so the fader keeps its own position and nudges the Mac per step.
+              <Fader label="BRIGHTNESS" height={portrait ? 220 : Math.min(420, area.h)} format={v => `${Math.round((v / 16) * 100)}`}
+                onStep={d => {
+                  const action = { type: 'media' as const, key: d > 0 ? 'brightness-up' as const : 'brightness-down' as const };
+                  api.run(Math.abs(d) === 1 ? action : { type: 'multi', steps: Array(Math.abs(d)).fill(action), delayMs: 0 }).catch(() => {});
+                }} />
             )}
-          </View>
-        )}
-        {!editing && dials.includes('brightness') && (
-          <View style={st.dials}>
-            {/* macOS can't report brightness, so the fader keeps its own position and nudges the Mac per step. */}
-            <Fader label="BRIGHTNESS" height={Math.min(420, area.h)} format={v => `${Math.round((v / 16) * 100)}`}
-              onStep={d => {
-                const action = { type: 'media' as const, key: d > 0 ? 'brightness-up' as const : 'brightness-down' as const };
-                api.run(Math.abs(d) === 1 ? action : { type: 'multi', steps: Array(Math.abs(d)).fill(action), delayMs: 0 }).catch(() => {});
-              }} />
           </View>
         )}
       </View>
@@ -384,6 +391,11 @@ const st = StyleSheet.create({
   grid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   gridRow: { flexDirection: 'row', justifyContent: 'center' },
   dials: { justifyContent: 'center', gap: 28 },
+  dialsRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },
+  strip: { flexDirection: 'row', alignItems: 'center', gap: 28 },
+  stripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40, paddingBottom: 8 },
+  mainPortrait: { flexDirection: 'column' },
+  libraryPortrait: { width: '100%', height: 360 },
   lifted: { opacity: 0.25 },
   floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
   status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Backdrop } from './Backdrop';
@@ -42,6 +42,8 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
   const m = state?.mac ?? {};
   const connected = h?.status === 'connected';
   const live = connected && !error;
+  const win = useWindowDimensions();
+  const portrait = win.height > win.width;
 
   const hush = (cmd: string, patch?: Partial<Headphones>) => {
     if (patch) {
@@ -107,12 +109,13 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
           </Pressable>
         </View>
 
-        <View style={st.body}>
-          {/* hero: noise cancelling */}
-          <HushCard style={st.hero}>
+        <View style={[st.body, portrait && st.bodyPortrait]}>
+          {/* hero: noise cancelling (a full-width row in portrait) */}
+          <HushCard style={portrait ? st.heroPortrait : st.hero}>
             <View style={[st.center, !live && st.off]} pointerEvents={live ? 'auto' : 'none'}>
-              <Dial value={level} min={0} max={10} size={320} label="NOISE CANCELLING" onChange={v => dial(`anc/${v}`)} />
+              <Dial value={level} min={0} max={10} size={portrait ? 260 : 320} label="NOISE CANCELLING" onChange={v => dial(`anc/${v}`)} />
             </View>
+            <View style={portrait ? st.heroSide : undefined}>
             <View style={st.presets}>
               <HushSegmented
                 options={PRESETS}
@@ -123,7 +126,10 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
               />
             </View>
             <Text style={st.heroHint}>{!live ? 'Turn your headphones on to adjust' : level === 0 ? 'Noise cancelling is off' : level === 10 ? 'Blocking as much as possible' : 'Turn to block more or less of the room'}</Text>
+            </View>
           </HushCard>
+
+          <View style={st.rest}>
 
           {/* sound */}
           <View style={st.col}>
@@ -179,6 +185,7 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
               </View>
             </HushCard>
           </View>
+          </View>
         </View>
       </Animated.View>
     </Animated.View>
@@ -231,6 +238,10 @@ const st = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
   },
   body: { flex: 1, flexDirection: 'row', gap: 20 },
+  bodyPortrait: { flexDirection: 'column' },
+  rest: { flex: 2.1, flexDirection: 'row', gap: 20 },
+  heroPortrait: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', paddingVertical: 8 },
+  heroSide: { gap: 18, alignItems: 'center' },
   hero: { flex: 1.1, alignItems: 'center', justifyContent: 'center', gap: 22 },
   presets: { alignSelf: 'stretch', paddingHorizontal: 12 },
   heroHint: { color: C.dim, fontSize: 14 },
