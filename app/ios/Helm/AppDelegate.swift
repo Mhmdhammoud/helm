@@ -22,6 +22,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeFactory = factory
 
     window = UIWindow(frame: UIScreen.main.bounds)
+    // A control surface has to be there when you reach for it: don't auto-lock while Helm is open.
+    application.isIdleTimerDisabled = true
 
     factory.startReactNative(
       withModuleName: "Helm",
