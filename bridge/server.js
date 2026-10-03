@@ -14,7 +14,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { appIcon, listApps, makeRunner, realExec } from './actions.js';
+import { appIcon, installFans, listApps, makeRunner, realExec } from './actions.js';
 import { BadRequest, loadDeck, saveDeck, validateDeck } from './deck.js';
 import { makeFeatures } from './features.js';
 
@@ -342,6 +342,11 @@ async function install() {
     if (!(await realExec('launchctl', ['print', `gui/${process.getuid()}/app.helm.bridge`]).then(() => true, () => false))) break;
     await new Promise(r => setTimeout(r, 100));
   }
+  // Every permission is asked for now, while you're at the Mac, instead of on some later key press:
+  // the bridge's first start asks for Accessibility (the launcher does that), this asks for notifications
+  // (pairing codes) and the admin password for the fans. Saying no to one is fine; it's asked again when needed.
+  await realExec(launcher, ['--notify', 'Helm Bridge', 'Installed. Open Helm on your iPad to pair.']).catch(() => {});
+  await installFans(SUPPORT).catch(() => console.log('Fan control skipped; a fan key will ask for the password again.'));
   await realExec('launchctl', ['bootstrap', `gui/${process.getuid()}`, LAUNCH_AGENT]);
   console.log(`Helm bridge installed; it starts at login. Log: ${log}`);
 }

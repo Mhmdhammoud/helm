@@ -85,6 +85,13 @@ export function fanMode(fans) {
 const INSTALL_FANS = `on run argv
 do shell script "mkdir -p '/Library/Application Support/Helm' && install -o root -g wheel -m 4755 " & quoted form of item 1 of argv & " " & quoted form of item 2 of argv with prompt "Helm Bridge wants to control your Mac's fans." with administrator privileges
 end run`;
+/** Installs the root fan helper if it isn't yet (asks for an admin password). Setup does this up front; a fan key otherwise. */
+export async function installFans(supportDir, exec = realExec) {
+  if (existsSync(FAN_BIN)) return;
+  const bin = await sensorsBin(supportDir, exec);
+  if (!bin) throw new Error('fans: the helper could not be built (are the Xcode command line tools installed?)');
+  await exec('osascript', ['-e', INSTALL_FANS, bin, FAN_BIN], 120000);
+}
 
 // AppleScript goes through one long-lived osascript (runner.js) on the real Mac; an injected `exec` (tests)
 // sees it as plain `osascript -e script args…` calls, as does anyone passing their own `osa`.
@@ -225,11 +232,7 @@ export function makeRunner({
           mode = FAN_MODES[(FAN_MODES.indexOf(now) + 1) % FAN_MODES.length];
         }
         if (!FAN_MODES.includes(mode)) throw new BadRequest(`unknown fan mode: ${a.mode}`);
-        if (!existsSync(FAN_BIN)) {
-          const bin = await sensorsBin(supportDir, exec);
-          if (!bin) throw new Error('fans: the helper could not be built (are the Xcode command line tools installed?)');
-          await exec('osascript', ['-e', INSTALL_FANS, bin, FAN_BIN], 120000);
-        }
+        await installFans(supportDir, exec);
         return exec(FAN_BIN, ['fan', mode]);
       }
       case 'page':

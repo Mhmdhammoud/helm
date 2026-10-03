@@ -14,6 +14,8 @@ node bridge/server.js --install    # runs at login (LaunchAgent); --uninstall re
 node bridge/server.js              # or run it in the foreground
 ```
 
+`--install` asks for everything up front: notifications (pairing codes), your admin password (fan control), and
+on the bridge's first start, Accessibility. Declining one is fine; it's asked again the first time it's needed.
 The login item runs through a small "Helm Bridge" app, so macOS asks for permissions under that name
 (not `node`): allow its Documents access if the repo lives there, and turn on Helm Bridge in System
 Settings → Privacy & Security → Accessibility so hotkeys, typed text and media keys work. In the
@@ -53,7 +55,7 @@ as with any Stream Deck, so pair only your own devices.
   the bridge sends it the city name and then its coordinates) for the key's city or, by default, the
   city last opened in the Mac's Weather app (falling back to the time-zone city), refreshed every 15 minutes.
 - **Fans**: Auto, Low (the fans' minimum), Mid and High (their maximum) keys, or the Thermals widget's tap. Writing the
-  fan controller needs root, so the first press asks for an admin password (a macOS dialog) and installs a setuid-root
+  fan controller needs root, so setup (or, if skipped there, the first press) asks for an admin password (a macOS dialog) and installs a setuid-root
   copy of the sensors helper at `/Library/Application Support/Helm/helm-fans2` that only takes `fan auto|low|mid|high`.
   Above 95°C a preset is dropped and the Mac takes the fans back. Remove with `sudo rm -r "/Library/Application Support/Helm"`.
 - **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
