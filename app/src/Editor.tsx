@@ -370,6 +370,14 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                 <ActionForm action={k.action} onChange={setAction} api={api} pages={pages} />
               </Group>
 
+              <Group title="When held">
+                <Options items={[{ value: 'none', label: 'Nothing extra', symbol: 'circle-slash' }, { value: 'set', label: 'Do something else', symbol: 'hand' }]}
+                  value={k.hold ? 'set' : 'none'}
+                  onChange={v => set({ hold: v === 'set' ? (k.hold ?? { type: 'media', key: 'next' }) : undefined })} />
+                {k.hold && <ActionForm action={k.hold} onChange={hold => set({ hold })} api={api} pages={pages} nested />}
+                <Text style={st.note}>Hold the key for half a second to run this instead.</Text>
+              </Group>
+
               <View style={st.divider} />
 
               <Group title="Icon">
@@ -415,7 +423,7 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <Segmented items={LIVES} value={k.live} onChange={live => set({ live })} />
                 </ScrollView>
-                <Text style={st.note}>Shows a reading under the title, updated every second.</Text>
+                <Text style={st.note}>Shows a live reading under the title.</Text>
               </Group>
             </ScrollView>
           </View>

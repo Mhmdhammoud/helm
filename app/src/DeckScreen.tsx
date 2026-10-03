@@ -176,8 +176,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
 
   const pageMenu = (id: string) => {
     const p = deck.pages.find(x => x.id === id)!;
-    const options = ['Rename', p.app ? `Unbind from ${p.app}` : 'Open with an app…', 'Delete page', 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions({ options, destructiveButtonIndex: 2, cancelButtonIndex: 3, title: p.name }, i => {
+    const options = ['Rename', p.app ? `Unbind from ${p.app}` : 'Open with an app…',
+      p.kind === 'running' ? 'Use my own keys' : 'Show open apps', 'Delete page', 'Cancel'];
+    ActionSheetIOS.showActionSheetWithOptions({ options, destructiveButtonIndex: 3, cancelButtonIndex: 4, title: p.name }, i => {
       const patch = (q: object) => setDeck({ ...deck, pages: deck.pages.map(x => (x.id === id ? { ...x, ...q } : x)) });
       if (i === 0) Alert.prompt('Rename page', undefined, name => name?.trim() && patch({ name: name.trim() }), 'plain-text', p.name);
       if (i === 1) {
@@ -185,7 +186,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         else Alert.prompt('Open this page with an app', `While this app is in front on the Mac, Helm shows "${p.name}". Use the app's name as the Mac shows it.`,
           app => app?.trim() && patch({ app: app.trim() }), 'plain-text', state?.mac?.app ?? '');
       }
-      if (i === 2 && deck.pages.length > 1) {
+      if (i === 2) patch({ kind: p.kind === 'running' ? undefined : 'running' });
+      if (i === 3 && deck.pages.length > 1) {
         setDeck({ ...deck, pages: deck.pages.filter(x => x.id !== id) });
         setStack([deck.pages.find(x => x.id !== id)!.id]);
       }
