@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Dial } from './Dial';
 import { KeyEditor } from './Editor';
 import { KeyTile, type Feedback } from './KeyTile';
+import { usePageKeys } from './running';
+import { Library } from './Library';
 import { Symbol } from './Symbol';
 import type { Action, Deck, Key, State } from './types';
 import { C, SPRING } from './theme';
@@ -31,10 +33,21 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [flash, setFlash] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
+  // Dragging a key (from the grid or the library): it follows the finger and drops on a slot.
+  const [drag, setDrag] = useState<{ k: Key; from?: string } | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+  const dx = useSharedValue(0);
+  const dy = useSharedValue(0);
+  const rootRef = useRef<View>(null);
+  const gridRef = useRef<View>(null);
+  const origin = useRef({ root: { x: 0, y: 0 }, grid: { x: 0, y: 0 } });
   const flashKey = (slot: string, ok: boolean) => setFeedback(f => ({ ...f, [slot]: { n: (f[slot]?.n ?? 0) + 1, ok } }));
 
   const pageId = deck.pages.some(p => p.id === stack.at(-1)) ? stack.at(-1)! : deck.pages[0].id;
   const page = deck.pages.find(p => p.id === pageId)!;
+  const keys = usePageKeys(api, page, editing);
   const { cols, rows } = deck.grid;
 
   // Profiles: a page bound to an app opens while that app is in front, and closes when it isn't.
@@ -61,8 +74,68 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     updatePage({ keys });
   };
 
+  const firstEmpty = () => Array.from({ length: cols * rows }, (_, i) => String(i)).find(i => !page.keys[i]);
+  const addKey = (k: Key, slot = firstEmpty()) => {
+    if (slot == null) return setFlash('This page is full. Add a page or make the grid bigger.');
+    setKey(slot, k);
+    flashKey(`${page.id}/${slot}`, true);
+  };
+
+  const startDrag = (k: Key, from?: string) => {
+    rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; });
+    gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; });
+    setDrag({ k, from });
+  };
+  const slotAt = (px: number, py: number) => {
+    const { x, y } = origin.current.grid;
+    const c = Math.floor((px - x) / (size + gap));
+    const r = Math.floor((py - y) / (size + gap));
+    return c >= 0 && c < cols && r >= 0 && r < rows ? String(r * cols + c) : null;
+  };
+  const drop = (slot: string | null, px = 0) => {
+    const d = dragRef.current;
+    setDrag(null);
+    setHover(null);
+    // A grid key dropped on the library panel (right of the grid) is removed.
+    if (d?.from != null && slot == null && px > origin.current.grid.x + cols * (size + gap)) {
+      setKey(d.from, null);
+      return;
+    }
+    if (!d || slot == null || slot === d.from) return;
+    const keys = { ...page.keys };
+    if (d.from != null) {
+      // Moving within the page swaps with whatever was there.
+      const there = keys[slot];
+      if (there) keys[d.from] = there; else delete keys[d.from];
+    }
+    keys[slot] = d.k;
+    updatePage({ keys });
+    flashKey(`${page.id}/${slot}`, true);
+  };
+  const dropRef = useRef(drop);
+  dropRef.current = drop;
+  const slotAtRef = useRef(slotAt);
+  slotAtRef.current = slotAt;
+
+  // Takes over the touch from the pressed key/library tile once a drag has started.
+  const dragPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponderCapture: () => dragRef.current != null,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (e) => {
+        const { pageX, pageY } = e.nativeEvent;
+        dx.value = pageX - origin.current.root.x;
+        dy.value = pageY - origin.current.root.y;
+        setHover(slotAtRef.current(pageX, pageY));
+      },
+      onPanResponderRelease: (e) => dropRef.current(slotAtRef.current(e.nativeEvent.pageX, e.nativeEvent.pageY), e.nativeEvent.pageX),
+      onPanResponderTerminate: () => dropRef.current(null),
+    }),
+  ).current;
+
   const press = (slot: string) => {
-    const k = page.keys[slot];
+    const k = keys[slot];
     if (editing) {
       if (picked) {
         // Second tap of a move: swap the two slots.
@@ -76,10 +149,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       } else setEditSlot(slot);
       return;
     }
-    if (!k) return;
-    navigate(k.action);
-    const slotId = `${page.id}/${slot}`;
-    api.run(k.action, slotId).then(() => { flashKey(slotId, true); refresh(); }, e => { flashKey(slotId, false); setFlash(`${k.title || 'Key'}: ${e.message}`); });
+    if (k) fire(k, k.action, `${page.id}/${slot}`);
+  };
+
+  // A held key runs its `hold` action under its own id, so a held toggle keeps separate state.
+  const fire = (k: Key, a: Action, slotId: string, runId = slotId) => {
+    navigate(a);
+    api.run(a, runId).then(() => { flashKey(slotId, true); refresh(); }, e => { flashKey(slotId, false); setFlash(`${k.title || 'Key'}: ${e.message}`); });
   };
 
   const navigate = (a: Action) => {
@@ -124,13 +200,15 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (area.h - gap * (rows - 1)) / rows));
   const dials = deck.dials ?? [];
 
+  const floating = useAnimatedStyle(() => ({ transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1.08 }] }));
+
   const tabs = [
     ...(stack.length > 1 ? [{ id: '__back', label: 'Back', symbol: 'chevron.backward' }] : []),
     ...deck.pages.map(p => ({ id: p.id, label: p.name, symbol: p.app ? 'bolt.fill' : undefined })),
   ];
 
   return (
-    <View style={st.root}>
+    <View style={st.root} ref={rootRef} {...dragPan.panHandlers}>
       <View style={st.top}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.tabScroll} contentContainerStyle={st.tabsRow}>
           <PageTabs tabs={tabs} current={pageId}
@@ -157,16 +235,23 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       <View style={st.main}>
         <View style={st.grid} onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
           {size > 0 && (
-            <Animated.View key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
+            <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
               {Array.from({ length: rows }, (_, r) => (
                 <View key={r} style={[st.gridRow, { gap }]}>
                   {Array.from({ length: cols }, (_, c) => {
                     const slot = String(r * cols + c);
                     const slotId = `${page.id}/${slot}`;
+                    const lifted = drag?.from === slot;
                     return (
-                      <KeyTile key={slot} id={slotId} k={page.keys[slot]} size={size} api={api} state={state}
-                        editing={editing} picked={picked === slot} feedback={feedback[slotId]} onPress={() => press(slot)}
-                        onLongPress={() => (editing ? setPicked(page.keys[slot] ? slot : null) : setEditing(true))} />
+                      <View key={slot} style={lifted && st.lifted}>
+                        <KeyTile id={slotId} k={keys[slot]} size={size} api={api} state={state}
+                          editing={editing && !drag} picked={hover === slot && !lifted} feedback={feedback[slotId]} onPress={() => press(slot)}
+                          onLongPress={() => {
+                            const held = keys[slot]?.hold;
+                            if (!editing) return held ? fire(keys[slot], held, slotId, `${slotId}:hold`) : setEditing(true);
+                            if (page.keys[slot]) startDrag(page.keys[slot], slot);
+                          }} />
+                      </View>
                     );
                   })}
                 </View>
@@ -175,7 +260,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
           )}
         </View>
 
-        {dials.length > 0 && (
+        {editing ? (
+          <Library api={api} state={state} dragging={!!drag} onAdd={k => addKey(k)} onDragStart={k => startDrag(k)} />
+        ) : dials.length > 0 && (
           <View style={st.dials}>
             {dials.includes('volume') && (
               <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={180} label="VOLUME"
@@ -191,9 +278,15 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
 
       <Text style={[st.status, flash && st.err]} numberOfLines={1}>
         {flash ?? (editing
-          ? picked ? 'Tap another slot to swap with it.' : 'Tap a key to change it  ·  hold a key to move it  ·  hold a page for options'
+          ? drag ? (drag.from != null ? 'Drop on a slot to move it (a key there swaps places), or on the library to remove it.' : 'Drop it on any slot.') : 'Tap a key to change it  ·  hold and drag to move it  ·  hold a page for options'
           : error ? `Can't reach ${macName}: ${error}` : state?.mac?.app ? `${state.mac.app} is in front` : '')}
       </Text>
+
+      {drag && (
+        <Animated.View pointerEvents="none" style={[st.floating, { width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 }, floating]}>
+          <KeyTile id="drag" k={drag.k} size={size} api={api} state={state} editing={false} picked onPress={() => {}} onLongPress={() => {}} />
+        </Animated.View>
+      )}
 
       {editSlot != null && (
         <KeyEditor initial={page.keys[editSlot] ?? null} api={api} pages={deck.pages}
@@ -275,5 +368,7 @@ const st = StyleSheet.create({
   grid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   gridRow: { flexDirection: 'row', justifyContent: 'center' },
   dials: { justifyContent: 'center', gap: 28 },
+  lifted: { opacity: 0.25 },
+  floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
   status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },
 });
