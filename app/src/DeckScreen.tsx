@@ -115,6 +115,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const dropRef = useRef(drop);
   dropRef.current = drop;
   const slotAtRef = useRef(slotAt);
+  const lastTouch = useRef({ x: 0, y: 0 });
   slotAtRef.current = slotAt;
 
   // Takes over the touch from the pressed key/library tile once a drag has started.
@@ -125,12 +126,14 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (e) => {
         const { pageX, pageY } = e.nativeEvent;
+        lastTouch.current = { x: pageX, y: pageY };
         dx.value = pageX - origin.current.root.x;
         dy.value = pageY - origin.current.root.y;
         setHover(slotAtRef.current(pageX, pageY));
       },
       onPanResponderRelease: (e) => dropRef.current(slotAtRef.current(e.nativeEvent.pageX, e.nativeEvent.pageY), e.nativeEvent.pageX),
-      onPanResponderTerminate: () => dropRef.current(null),
+      // Releasing over the library's native scroll view arrives as a terminate, not a release.
+      onPanResponderTerminate: () => dropRef.current(slotAtRef.current(lastTouch.current.x, lastTouch.current.y), lastTouch.current.x),
     }),
   ).current;
 
