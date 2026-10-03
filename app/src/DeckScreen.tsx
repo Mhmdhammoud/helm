@@ -108,7 +108,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     if (!d || slot == null || slot === d.from) return;
     // Single keys swap (or replace, from the library); widgets need free room.
     const keys = place(page.keys, cols, rows, d.k, slot, d.from);
-    if (!keys) return setFlash(`Not enough room there for a ${spanOf(d.k).w}×${spanOf(d.k).h} widget.`);
+    if (!keys) return setFlash(`No room for that ${spanOf(d.k).w}×${spanOf(d.k).h} there, even moving keys aside.`);
     updatePage({ keys });
     flashKey(`${page.id}/${slot}`, true);
   };
@@ -285,7 +285,11 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   ];
 
   return (
-    <View style={st.root} ref={rootRef}>
+    // Like the iOS home screen: hold a key or empty space to edit, tap empty space to finish. Keys, the library
+    // and the tools take their own touches first, so only taps on the background reach this.
+    <Pressable style={st.root} ref={rootRef} accessible={false} delayLongPress={450}
+      onPress={() => { if (editing) { setEditing(false); setPicked(null); } }}
+      onLongPress={editing ? undefined : () => setEditing(true)}>
       <View style={st.top}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.tabScroll} contentContainerStyle={st.tabsRow}>
           <PageTabs tabs={tabs} current={pageId}
@@ -296,7 +300,6 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         <View style={st.topRight}>
           {!portrait && editTools}
           <Pill symbol="desktopcomputer" label={macName} dot={error ? C.danger : C.ok} onPress={onMacs} />
-          <Pill label={editing ? 'Done' : 'Edit'} strong={editing} onPress={() => { setEditing(e => !e); setPicked(null); }} />
         </View>
       </View>
       {/* Portrait has no room for the edit tools in the top bar; they get their own row. */}
@@ -385,7 +388,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       ) : editSlot == null && (
       <Text style={[st.status, flash && st.err]} numberOfLines={1}>
         {flash ?? (editing
-          ? drag ? (drag.from != null ? 'Drop on a slot to move it (a key there swaps places), or on the library to remove it.' : 'Drop it on any slot.') : 'Tap a key to change it  ·  hold and drag to move it  ·  hold a page for options'
+          ? drag ? (drag.from != null ? 'Drop on a slot: keys there move aside. Drop on the library to remove it.' : 'Drop it on any slot: keys there move aside.') : 'Tap a key to change it  ·  hold and drag to move it  ·  tap empty space when done'
           : !state ? `Connecting to ${macName}…` : state.mac?.app ? `${state.mac.app} is in front` : '')}
       </Text>
       )}
@@ -407,7 +410,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
           onSave={k => { setKey(editSlot, k); setEditSlot(null); }}
           onClear={() => { setKey(editSlot, null); setEditSlot(null); }} />
       )}
-    </View>
+    </Pressable>
   );
 }
 

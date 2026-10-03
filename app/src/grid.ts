@@ -32,23 +32,35 @@ export function layout(keys: Keys, cols: number, rows: number) {
 
 /**
  * Drops `k` with its top-left on `slot`, moving it from `from` (a grid slot) or adding it (from the library).
- * Single keys keep the old feel: dropped on another single key they swap (move) or replace it (add).
- * Anything involving a widget needs the room to be free. Returns the new keys, or null if it doesn't fit.
+ * Two single keys swap when one is moved onto the other. Otherwise whatever `k` lands on moves out of the way,
+ * like the iOS home screen: each displaced key goes to the nearest spot it fits, trying the slot `k` left first.
+ * Returns the new keys, or null if `k` runs off the grid or a displaced key has nowhere to go.
  */
 export function place(keys: Keys, cols: number, rows: number, k: Key, slot: string, from?: string): Keys | null {
   const next = { ...keys };
   if (from != null) delete next[from];
-  const there = next[slot];
   const single = (x?: Key) => !!x && spanOf(x).w === 1 && spanOf(x).h === 1;
-  if (single(k) && single(there)) {
-    if (from != null) next[from] = there;
+  if (from != null && single(k) && single(next[slot])) {
+    next[from] = next[slot];
     next[slot] = k;
     return next;
   }
   const cells = region(+slot, k, cols, rows);
   if (!cells) return null;
   const { owner } = layout(next, cols, rows);
-  if (cells.some(c => owner[c] != null)) return null;
+  const displaced = [...new Set(cells.map(c => owner[c]).filter((o): o is string => o != null))];
+  const moved = displaced.map(d => [d, next[d]] as const);
+  displaced.forEach(d => delete next[d]);
   next[slot] = k;
+  for (const [was, key] of moved) {
+    const taken = layout(next, cols, rows).owner;
+    const fits = (s: number) => region(s, key, cols, rows)?.every(c => taken[c] == null) ?? false;
+    const r0 = Math.floor(+was / cols), c0 = +was % cols;
+    const order = Array.from({ length: cols * rows }, (_, i) => i)
+      .sort((a, b) => Math.abs(Math.floor(a / cols) - r0) + Math.abs((a % cols) - c0) - (Math.abs(Math.floor(b / cols) - r0) + Math.abs((b % cols) - c0)) || a - b);
+    const spot = [...(from != null ? [+from] : []), ...order].find(fits);
+    if (spot == null) return null;
+    next[String(spot)] = key;
+  }
   return next;
 }

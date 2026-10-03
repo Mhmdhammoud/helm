@@ -130,7 +130,8 @@ export function Library({ api, state, style, drag }: {
   }, [apps, shortcuts, running, query]);
 
   return (
-    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={[st.panel, style]} onLayout={e => setW(e.nativeEvent.layout.width)}>
+    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={[st.panel, style]} onLayout={e => setW(e.nativeEvent.layout.width)}
+      onStartShouldSetResponder={() => true /* a tap on the panel itself mustn't end Edit */}>
       <View style={st.search}>
         <Symbol name="magnifyingglass" size={14} color={C.dim} />
         <TextInput value={q} onChangeText={setQ} placeholder="Apps, actions, shortcuts" placeholderTextColor={C.dim}
