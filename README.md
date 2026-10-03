@@ -50,7 +50,7 @@ as with any Stream Deck, so pair only your own devices.
   anything under /Volumes; red under 10% free) and now playing can span 2×1 up to 3×2
   slots (Widgets in the library, or Size in the editor). Weather comes from Open-Meteo (free, no key;
   the bridge sends it the city name and then its coordinates) for the key's city or, by default, the
-  Mac's time-zone city, refreshed every 15 minutes.
+  city last opened in the Mac's Weather app (falling back to the time-zone city), refreshed every 15 minutes.
 - **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
 - **Pages and profiles**: hold a page tab (in Edit) to rename, delete, bind it to an app, or make it
   show the Mac's open apps. A bound page (⚡︎) opens while that app is in front on the Mac.

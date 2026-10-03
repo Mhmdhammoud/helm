@@ -12,8 +12,9 @@ import { loadDeck } from './deck.js';
 const TTL = 2000;
 const WEATHER_TTL = 15 * 60_000;
 const WEATHER_RETRY = 2 * 60_000;
+const WEATHER_PREFS = join(process.env.HOME ?? '', 'Library/Group Containers/group.com.apple.weather/Library/Preferences/group.com.apple.weather.plist');
 
-/** Where the weather is for when no key names a place: the city in the Mac's time zone ("Europe/Istanbul" → "Istanbul"). */
+/** Last resort for where the weather is: the city in the Mac's time zone ("Europe/Istanbul" → "Istanbul"). */
 export const homePlace = (tz = Intl.DateTimeFormat().resolvedOptions().timeZone) => tz?.split('/').pop()?.replace(/_/g, ' ') || null;
 // Player apps are only queried while running: a `tell` would launch them, or ask where Spotify is if it isn't installed.
 const PLAYERS = {
@@ -138,12 +139,48 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     if (!r.ok) throw new Error(`weather: HTTP ${r.status}`);
     return r.json();
   };
-  async function weather(place) {
-    if (!place) return null;
-    if (weatherCache?.place === place && now() - weatherCache.at < (weatherCache.value ? WEATHER_TTL : WEATHER_RETRY)) return weatherCache.value;
+  // When no key names a place, follow the Weather app: the city last opened there ("LocationID:lat:lon" in its prefs),
+  // named from its saved cities. Read through `defaults`/`plutil`, so no location permission is needed.
+  let appPlace = null; // { at, value }
+  async function weatherAppPlace() {
+    if (appPlace && now() - appPlace.at < 60_000) return appPlace.value;
     let value = null;
     try {
-      const geo = (await getJson(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place)}`)).results?.[0];
+      const [, lat, lon] = (await exec('defaults', ['read', 'com.apple.weather', 'modules.location.lastViewedLocation'])).trim().split(':');
+      if (lat && lon) {
+        const same = appPlace?.value?.lat === +lat && appPlace?.value?.lon === +lon;
+        value = { name: same ? appPlace.value.name : await placeName(lat, lon), lat: +lat, lon: +lon };
+      }
+    } catch {}
+    appPlace = { at: now(), value };
+    return value;
+  }
+
+  // The Weather app's own name for a saved city; its city list is in a group container that a login item may not
+  // be allowed to read, so otherwise ask Apple's geocoder (bridge/placename.swift).
+  async function placeName(lat, lon) {
+    try {
+      const cities = JSON.parse(await exec('plutil', ['-extract', 'Cities', 'json', '-o', '-', WEATHER_PREFS]));
+      const city = cities.find(c => Math.abs(c.Lat - lat) < 1e-3 && Math.abs(c.Lon - lon) < 1e-3);
+      if (city) return city.Name;
+    } catch {}
+    try {
+      const bin = await swiftHelper(supportDir, 'placename1', 'placename.swift', exec);
+      const name = bin && (await exec(bin, [lat, lon])).trim();
+      if (name) return name;
+    } catch {}
+    return 'My Location';
+  }
+
+  /** `place` is a city name to look up, or { name, lat, lon } from the Weather app. */
+  async function weather(place) {
+    if (!place) return null;
+    const id = JSON.stringify(place);
+    if (weatherCache?.place === id && now() - weatherCache.at < (weatherCache.value ? WEATHER_TTL : WEATHER_RETRY)) return weatherCache.value;
+    let value = null;
+    try {
+      const geo = typeof place === 'object' ? { name: place.name, latitude: place.lat, longitude: place.lon }
+        : (await getJson(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place)}`)).results?.[0];
       if (geo) {
         const f = await getJson(`https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}` +
           '&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto');
@@ -157,7 +194,7 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
         };
       }
     } catch {}
-    weatherCache = { place, at: now(), value };
+    weatherCache = { place: id, at: now(), value };
     return value;
   }
 
@@ -167,7 +204,7 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     if (want.has('nowplaying')) jobs.push(nowPlaying().then(v => { out.nowPlaying = v; }, () => { out.nowPlaying = null; }));
     // The system widget shows all three Mac stats.
     if (want.has('system')) ['cpu', 'memory', 'macbattery'].forEach(w => want.add(w));
-    if (want.has('weather')) jobs.push(weather(place).then(v => { out.weather = v; }));
+    if (want.has('weather')) jobs.push((async () => { out.weather = await weather(place || await weatherAppPlace() || homePlace()); })());
     if (want.has('storage')) jobs.push(drives().then(v => { out.storage = v; }, () => {}));
     // Chip temperature and fans, from a small Swift helper (bridge/sensors.swift) built on first use.
     if (want.has('thermal')) {
@@ -194,8 +231,8 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
       const want = new Set(keys.map(k => k.live));
       want.add('storage'); // cheap (statfs), and lets the library preview the storage widget with real numbers
       // ponytail: one weather place per deck (the first weather key's), add per-key places if people want several cities.
-      const place = keys.find(k => k.live === 'weather' && k.place)?.place || homePlace();
-      const key = [...want].sort().join() + place;
+      const place = keys.find(k => k.live === 'weather' && k.place)?.place;
+      const key = [...want].sort().join() + (place ?? '');
       if (!cache || now() - cache.at >= TTL || cache.key !== key) cache = { at: now(), key, promise: sample(want, place) };
       return cache.promise;
     },

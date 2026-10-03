@@ -22,6 +22,8 @@ function harness() {
     if (cmd === 'osascript' && script.startsWith('input volume')) return '60';
     if (cmd === '/bin/zsh' && args[1]?.startsWith('lsappinfo')) return '"LSDisplayName"="zoom.us"';
     if (cmd === 'pgrep') return '4242';
+    if (cmd === 'defaults' && args[2] === 'modules.location.lastViewedLocation') return 'LocationID:39.7510504:37.0147235\n';
+    if (cmd === 'plutil' && args[1] === 'Cities') return '[{"Name":"Istanbul","Lat":41.03,"Lon":28.98},{"Name":"Sivas Merkez","Lat":39.7510504,"Lon":37.0147235}]';
     if (cmd === 'shortcuts') return 'Morning\nFocus';
     if (cmd === 'ps') return 'launchd\n   Spotify\nzsh';
     if (cmd === 'osascript' && script.startsWith('tell application "Spotify"')) return 'paused\tSong\tBand\tspotify:track:1\thttps://i.scdn.co/image/x';
@@ -88,6 +90,18 @@ test('widgets: the system widget samples all Mac stats, weather comes from Open-
   assert.equal(urls.length, 2, 'the forecast is cached');
   deck.pages[0].keys[0].span = { w: 9, h: 1 };
   assert.equal((await call('PUT', '/deck', deck)).status, 400, 'span is bounded');
+});
+
+test('with no place on the key, weather follows the city last opened in the Weather app', async t => {
+  const urls = [];
+  const fetch = async url => (urls.push(url), { ok: true, json: async () => ({ current: { temperature_2m: 5.4, weather_code: 0, is_day: 0 }, daily: { temperature_2m_max: [13.2], temperature_2m_min: [5] } }) });
+  const { call } = await start(t, { fetch });
+  const deck = (await call('GET', '/deck')).body;
+  deck.pages[0].keys = { 0: { action: { type: 'open', target: 'Weather' }, live: 'weather', span: { w: 2, h: 1 } } };
+  await call('PUT', '/deck', deck);
+  assert.deepEqual((await call('GET', '/state')).body.weather, { place: 'Sivas Merkez', temp: 5, code: 0, day: false, hi: 13, lo: 5 });
+  assert.equal(urls.length, 1, 'no geocoding: the Weather app gives coordinates');
+  assert.match(urls[0], /latitude=39.7510504&longitude=37.0147235/);
 });
 
 test('storage lists the Mac\'s disk first, with free space under total', async () => {

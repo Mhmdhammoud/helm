@@ -485,7 +485,7 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
               )}
               {k.live === 'weather' && (
                 <Group title="City">
-                  <Input value={k.place ?? ''} onChangeText={place => set({ place: place || undefined })} placeholder="Your Mac's time-zone city" autoCapitalize="words" />
+                  <Input value={k.place ?? ''} onChangeText={place => set({ place: place || undefined })} placeholder="Same as the Weather app" autoCapitalize="words" />
                 </Group>
               )}
             </ScrollView>
