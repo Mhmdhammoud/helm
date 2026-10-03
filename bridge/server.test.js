@@ -41,7 +41,9 @@ function harness() {
 
 async function start(t, opts = {}) {
   const h = harness();
-  const server = await serve({ port: 0, exec: h.exec, hushCli: h.hushCli, supportDir: h.dir, name: 'Mac mini', watch: false, ...opts });
+  // Each clock read moves 6s on, so back-to-back pairing starts in a test aren't throttled.
+  let clock = Date.now();
+  const server = await serve({ port: 0, exec: h.exec, hushCli: h.hushCli, supportDir: h.dir, name: 'Mac mini', watch: false, now: () => (clock += 6000), ...opts });
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
   let token = '';
@@ -56,6 +58,27 @@ async function start(t, opts = {}) {
   const run = (action, id) => call('POST', '/run', { action, id });
   return { ...h, h, call, run, base, token: () => token };
 }
+
+test('pairing: new codes are throttled and 15 wrong guesses lock pairing for 15 minutes', async t => {
+  let clock = 1e12;
+  const { call, calls } = await start(t, { now: () => clock });
+  clock += 6000;
+  const startCode = async () => { clock += 6000; await call('POST', '/pair/start', null, ''); return calls.findLast(c => /display notification/.test(c[2] ?? ''))[3]; };
+  await startCode();
+  assert.equal((await call('POST', '/pair/start', null, '')).status, 400, 'a second code within 5s is refused');
+  for (let round = 0; round < 3; round++) {
+    const code = await startCode();
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) await call('POST', '/pair', { code: wrong }, '');
+  }
+  const code = await startCode().catch(() => null);
+  assert.equal(code, calls.findLast(c => /display notification/.test(c[2] ?? ''))?.[3], 'no new code was issued');
+  const r = await call('POST', '/pair/start', null, '');
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /paused for 15 minutes/);
+  clock += 15 * 60_000 + 1;
+  assert.equal((await call('POST', '/pair/start', null, '')).status, 200, 'unlocks after 15 minutes');
+});
 
 test('pairing: code exchange, wrong guesses, token required', async t => {
   const { call, calls } = await start(t);

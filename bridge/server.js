@@ -86,7 +86,7 @@ function watchVolume(onChange) {
 
 export function serve({
   port = PORT, exec = realExec, hushCli = HUSH_CLI, supportDir = SUPPORT, name = 'Mac',
-  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true,
+  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now,
 } = {}) {
   const deckFile = join(supportDir, 'deck.json');
   const tokensFile = join(supportDir, 'tokens.json');
@@ -95,20 +95,35 @@ export function serve({
   const features = makeFeatures({ exec, supportDir, deckFile });
   const authed = h => /^Bearer .+/.test(h ?? '') && !!loadTokens(tokensFile)[sha(h.slice(7))];
 
-  // One pairing code at a time, valid 2 minutes, burned after 5 wrong guesses.
+  // One pairing code at a time, valid 2 minutes, burned after 5 wrong guesses. Across codes: a new code at
+  // most every 5s, and 15 wrong guesses lock pairing for 15 minutes, so the 6 digits can't be brute-forced
+  // by asking for fresh codes (that would take years at 15 guesses per 15 minutes).
   let pairing = null;
+  let lastStart = 0;
+  let fails = [];
+  const LOCK_MS = 15 * 60_000;
+  const locked = () => {
+    fails = fails.filter(t => now() - t < LOCK_MS);
+    return fails.length >= 15;
+  };
+  const lockedError = () => new BadRequest('too many wrong codes; pairing is paused for 15 minutes');
   const unauthed = {
     'GET /hello': () => ({ app: 'helm', name, id }),
     'POST /pair/start': async () => {
-      pairing = { code: String(randomInt(0, 1e6)).padStart(6, '0'), expires: Date.now() + 120_000, tries: 0 };
+      if (locked()) throw lockedError();
+      if (now() - lastStart < 5000) throw new BadRequest('wait a few seconds before asking for a new code');
+      lastStart = now();
+      pairing = { code: String(randomInt(0, 1e6)).padStart(6, '0'), expires: now() + 120_000, tries: 0 };
       console.log(`pairing code: ${pairing.code}`);
       await exec('osascript', ['-e', 'on run argv\ndisplay notification ("Enter " & item 1 of argv & " on your iPad") with title "Helm pairing"\nend run', pairing.code]).catch(() => {});
       return { name };
     },
     'POST /pair': async req => {
       const { code, device } = await readBody(req);
-      if (!pairing || Date.now() > pairing.expires) throw new BadRequest('no pairing in progress; start again');
+      if (locked()) throw lockedError();
+      if (!pairing || now() > pairing.expires) throw new BadRequest('no pairing in progress; start again');
       if (String(code) !== pairing.code) {
+        fails.push(now());
         if (++pairing.tries >= 5) pairing = null;
         throw new BadRequest('wrong code');
       }
