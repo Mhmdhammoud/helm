@@ -274,6 +274,11 @@ function IconCell({ on, onPress, label, wide, children }: { on: boolean; onPress
 }
 
 /** Edits one key in a two-pane sheet: a live preview on the left, everything it does on the right. */
+function usePortrait() {
+  const w = useWindowDimensions();
+  return w.height > w.width;
+}
+
 export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, onCancel }: {
   initial: Key | null;
   /** Live Mac/headphone state, so the preview shows real readings. */
@@ -284,6 +289,7 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
   onClear: () => void;
   onCancel: () => void;
 }) {
+  const portrait = usePortrait();
   const [k, setK] = useState<Key>(initial ?? { title: '', action: { type: 'open', target: '' } });
   const [feedback, setFeedback] = useState<Feedback>();
   const [result, setResult] = useState<string | null>(null);
@@ -341,13 +347,14 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
             </Pressable>
           </View>
 
-          <View style={st.panes}>
-            <View style={st.left}>
+          <View style={[st.panes, portrait && st.panesPortrait]}>
+            <View style={portrait ? st.leftPortrait : st.left}>
               <Backdrop calm={0.7} />
-              <View style={st.preview}>
-                <KeyTile k={k} id="editor/0" size={200} api={api} state={state} editing={false} picked={false} feedback={feedback}
+              <View style={portrait ? st.previewPortrait : st.preview}>
+                <KeyTile k={k} id="editor/0" size={portrait ? 150 : 200} api={api} state={state} editing={false} picked={false} feedback={feedback}
                   onPress={test} onLongPress={() => {}} />
               </View>
+              <View style={portrait ? st.infoPortrait : st.info}>
               <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Title" autoCapitalize="words" style={st.title} />
               <View style={st.leftActions}>
                 <Pressable onPress={test} style={({ pressed }) => [st.try, pressed && p.pressed]}>
@@ -363,6 +370,7 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                   <Text style={st.clearText}>Clear this key</Text>
                 </Pressable>
               )}
+              </View>
             </View>
 
             <ScrollView style={st.flex} contentContainerStyle={st.right} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
@@ -458,6 +466,15 @@ const st = StyleSheet.create({
   save: { backgroundColor: C.silver, paddingVertical: 7, paddingHorizontal: 18, borderRadius: 999 },
   saveText: { color: C.bg, fontSize: 16, fontWeight: '600' },
   panes: { flex: 1, flexDirection: 'row' },
+  panesPortrait: { flexDirection: 'column' },
+  // Portrait: the preview becomes a compact row above the settings.
+  leftPortrait: {
+    flexDirection: 'row', alignItems: 'center', gap: 28, paddingVertical: 20, paddingHorizontal: 32, overflow: 'hidden',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.hairline,
+  },
+  previewPortrait: { width: 150, height: 150 },
+  info: { flex: 1, alignSelf: 'stretch', alignItems: 'center' },
+  infoPortrait: { flex: 1, alignItems: 'center' },
 
   left: {
     width: 360,

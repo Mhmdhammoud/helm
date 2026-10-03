@@ -211,6 +211,17 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
 
   const floating = useAnimatedStyle(() => ({ transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1.08 }] }));
 
+  const editTools = editing && (
+            <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.topRight}>
+              <Pill symbol="square.grid.3x3" label={`${cols} × ${rows}`} onPress={() => {
+                const i = GRIDS.findIndex(g => g.cols === cols && g.rows === rows);
+                setDeck({ ...deck, grid: GRIDS[(i + 1) % GRIDS.length] });
+              }} />
+              <Pill symbol={deck.autoProfile ? 'bolt.fill' : 'bolt.slash'} label={deck.autoProfile ? 'Follow apps' : 'Fixed page'}
+                onPress={() => setDeck({ ...deck, autoProfile: !deck.autoProfile })} />
+            </Animated.View>
+  );
+
   const tabs = [
     ...(stack.length > 1 ? [{ id: '__back', label: 'Back', symbol: 'chevron.backward' }] : []),
     ...deck.pages.map(p => ({ id: p.id, label: p.name, symbol: p.app ? 'bolt.fill' : undefined })),
@@ -226,20 +237,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
           {editing && <Pill symbol="plus" label="Page" onPress={addPage} />}
         </ScrollView>
         <View style={st.topRight}>
-          {editing && (
-            <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.topRight}>
-              <Pill symbol="square.grid.3x3" label={`${cols} × ${rows}`} onPress={() => {
-                const i = GRIDS.findIndex(g => g.cols === cols && g.rows === rows);
-                setDeck({ ...deck, grid: GRIDS[(i + 1) % GRIDS.length] });
-              }} />
-              <Pill symbol={deck.autoProfile ? 'bolt.fill' : 'bolt.slash'} label={deck.autoProfile ? 'Follow apps' : 'Fixed page'}
-                onPress={() => setDeck({ ...deck, autoProfile: !deck.autoProfile })} />
-            </Animated.View>
-          )}
+          {!portrait && editTools}
           <Pill symbol="desktopcomputer" label={macName} dot={error ? C.danger : C.ok} onPress={onMacs} />
           <Pill label={editing ? 'Done' : 'Edit'} strong={editing} onPress={() => { setEditing(e => !e); setPicked(null); }} />
         </View>
       </View>
+      {/* Portrait has no room for the edit tools in the top bar; they get their own row. */}
+      {portrait && editTools && <View style={st.toolsRow}>{editTools}</View>}
 
       <View style={[st.main, portrait && st.mainPortrait]}>
         <View style={st.grid} onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
@@ -395,6 +399,7 @@ const st = StyleSheet.create({
   strip: { flexDirection: 'row', alignItems: 'center', gap: 28 },
   stripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40, paddingBottom: 8 },
   mainPortrait: { flexDirection: 'column' },
+  toolsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: -10, marginBottom: 12 },
   libraryPortrait: { width: '100%', height: 360 },
   lifted: { opacity: 0.25 },
   floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
