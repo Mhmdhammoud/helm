@@ -27,24 +27,29 @@ as with any Stream Deck, so pair only your own devices.
 
 ## Use
 
-- **Keys**: tap to run. **Edit** → tap a key to set its action, title, emoji or app icon, colour
-  and live status; long-press a key, then tap another slot to swap them.
-- **Actions**: open app/file/URL, hotkey, type text, media (play/pause, next, previous), volume,
-  mic mute, macOS Shortcut, shell script, system (lock, sleep display, screensaver), Hush command,
-  Hush panel, go to page, back, multi action (steps with a delay), toggle (alternates two actions).
+- **Keys**: tap to run; the key flashes when the Mac has done it.
+- **Edit**: a library opens beside the keys (below them in portrait) with your open apps first,
+  then common apps, media, Mac, headphones, meetings, live keys and your macOS Shortcuts; search
+  finds the rest. Tap an item to fill the next empty slot, or hold and drag it onto any slot.
+  Hold and drag a key to move it (dropping on another key swaps them) or onto the library to remove
+  it. Tap a key to open its editor: what it does, what it does when held, icon (Lucide + Helm's own
+  set, the app's icon, or an emoji), tint and live status, with a live preview and "Try it on the Mac".
+- **Actions**: open app/file/URL, key combo, type text, media (play/pause, next, previous), volume
+  (real volume keys, so the Mac shows its volume bar), mic mute, macOS Shortcut, shell command,
+  system (lock, sleep display, screensaver), Hush command, Hush panel, go to page, back, several
+  steps (with a delay), on/off (alternates two actions).
 - **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state, now playing (Music
   or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
   Mac battery ("AC" on Macs without one). Mac readings are taken only while an iPad is watching.
 - **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
-- **Running apps page**: a page with `"kind": "running"` fills itself with the Mac's open apps; tap one
-  to bring it to the front.
-- **Brightness**: media keys Brighter / Dimmer. They reach built-in and Apple displays only; macOS
-  can't dim third-party monitors. **Focus / Do Not Disturb**: make a Shortcut named "Toggle Focus"
-  (Shortcuts app → Set Focus → Do Not Disturb, Toggle) and put it on a Shortcut key.
-- **Pages and profiles**: long-press a page tab (in Edit) to rename, delete or bind it to an app.
-  A bound page (⚡︎) opens while that app is in front on the Mac, and closes when it isn't.
-- **Dials**: Mac volume and noise cancelling, Stream Deck+ style.
-- **Grid**: 4×3, 5×3, 6×4 or 8×4 (tap the size in Edit).
+- **Pages and profiles**: hold a page tab (in Edit) to rename, delete, bind it to an app, or make it
+  show the Mac's open apps. A bound page (⚡︎) opens while that app is in front on the Mac.
+- **Dials and fader**: Mac volume and noise cancelling as dials, brightness as a DJ-style fader
+  (`"dials": ["volume", "anc", "brightness"]`). Brightness keys reach built-in and Apple displays
+  only; macOS can't dim third-party monitors.
+- **Focus / Do Not Disturb**: make a Shortcut named "Toggle Focus" (Shortcuts app → Set Focus → Do
+  Not Disturb, Toggle) and put it on a Shortcut key.
+- **Grid**: 4×3, 5×3, 6×4 or 8×4 (tap the size in Edit). Works in landscape and portrait.
 
 ## Build the iPad app
 
