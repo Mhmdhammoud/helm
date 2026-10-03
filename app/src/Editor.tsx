@@ -7,6 +7,8 @@ import { KeyTile, type Feedback } from './KeyTile';
 import { ICONS, Symbol, defaultSymbol } from './Symbol';
 import type { State, Action, ActionType, Key, Live, Mod, Page } from './types';
 import { C, SPRING } from './theme';
+import { spanOf } from './grid';
+import { WIDGET_LIVE } from './Widget';
 import { Advanced, Heading, IconTile, Input, Keycap, MODS, NAMED_KEYS, Options, Segmented, Suggest, Swatches, capFor, st as p } from './EditorParts';
 
 type TypeDef = { type: ActionType; label: string; symbol: string; make: (pages: Page[]) => Action };
@@ -74,6 +76,17 @@ const LIVES: { value: Live | undefined; label: string }[] = [
   { value: 'cpu', label: 'CPU' },
   { value: 'memory', label: 'Memory' },
   { value: 'macbattery', label: 'Mac battery' },
+  { value: 'system', label: 'CPU, memory, battery' },
+  { value: 'weather', label: 'Weather' },
+];
+
+// Widget sizes, in slots: wide and big faces for the live kinds that have them.
+const SIZES = [
+  { value: '1x1', label: '1 × 1' },
+  { value: '2x1', label: '2 × 1' },
+  { value: '3x1', label: '3 × 1' },
+  { value: '2x2', label: '2 × 2' },
+  { value: '3x2', label: '3 × 2' },
 ];
 
 // The curated picker list lives with the icon set; grouped here in its own order.
@@ -353,6 +366,8 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
 
   const target = k.action.type === 'open' ? k.action.target : '';
   const knownApp = !!target && apps.includes(target);
+  // Widgets shrink their slots so the preview keeps the pane's size.
+  const previewUnit = (portrait ? 150 : 200) / Math.max(1, spanOf(k).w * 0.75, spanOf(k).h);
   const kind = k.icon?.app ? 'app' : k.icon?.symbol ? 'symbol' : k.icon?.emoji ? 'emoji' : 'auto';
   const sheetW = Math.min(1180, width - 48);
   const sheetH = height - 48;
@@ -374,7 +389,8 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
             <View style={portrait ? st.leftPortrait : st.left}>
               <Backdrop calm={0.7} />
               <View style={portrait ? st.previewPortrait : st.preview}>
-                <KeyTile k={k} id="editor/0" size={portrait ? 150 : 200} api={api} state={state} editing={false} picked={false} feedback={feedback}
+                <KeyTile k={k} id="editor/0" size={previewUnit} width={spanOf(k).w * previewUnit + (spanOf(k).w - 1) * 8} height={spanOf(k).h * previewUnit + (spanOf(k).h - 1) * 8}
+                  api={api} state={state} editing={false} picked={false} feedback={feedback}
                   onPress={test} onLongPress={() => {}} />
               </View>
               <View style={portrait ? st.infoPortrait : st.info}>
@@ -454,8 +470,23 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <Segmented items={LIVES} value={k.live} onChange={live => set({ live })} />
                 </ScrollView>
-                <Text style={st.note}>Shows a live reading under the title.</Text>
+                <Text style={st.note}>Shows a live reading on the key.</Text>
               </Group>
+
+              {(WIDGET_LIVE as readonly string[]).includes(k.live ?? '') && (
+                <Group title="Size">
+                  <Segmented items={SIZES} value={`${spanOf(k).w}x${spanOf(k).h}`} onChange={v => {
+                    const [w, h] = v.split('x').map(Number);
+                    set({ span: w === 1 && h === 1 ? undefined : { w, h } });
+                  }} />
+                  <Text style={st.note}>Bigger keys become widgets. They need free slots to the right and below.</Text>
+                </Group>
+              )}
+              {k.live === 'weather' && (
+                <Group title="City">
+                  <Input value={k.place ?? ''} onChangeText={place => set({ place: place || undefined })} placeholder="Your Mac's time-zone city" autoCapitalize="words" />
+                </Group>
+              )}
             </ScrollView>
           </View>
         </Animated.View>

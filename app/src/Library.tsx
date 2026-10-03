@@ -5,6 +5,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { FadeInRight, FadeOutRight } from 'react-native-reanimated';
 import type { Client } from './api';
 import { KeyTile, type DragProps } from './KeyTile';
+import { spanOf } from './grid';
 import { Symbol } from './Symbol';
 import type { Key, State } from './types';
 import { C } from './theme';
@@ -13,6 +14,17 @@ const k = (title: string, action: Key['action'], extra: Partial<Key> = {}): Key 
 
 /** Ready-made keys, grouped the way people look for them. */
 const SECTIONS: { title: string; keys: Key[] }[] = [
+  {
+    title: 'Widgets',
+    keys: [
+      k('Clock', { type: 'open', target: 'Clock' }, { icon: { symbol: 'clock' }, live: 'clock', span: { w: 2, h: 1 } }),
+      k('Weather', { type: 'open', target: 'Weather' }, { icon: { symbol: 'cloud-sun' }, live: 'weather', span: { w: 2, h: 1 } }),
+      k('System', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'gauge' }, live: 'system', span: { w: 2, h: 1 } }),
+      k('System', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'gauge' }, live: 'system', span: { w: 2, h: 2 } }),
+      k('Now playing', { type: 'media', key: 'play' }, { icon: { symbol: 'helm:now-playing' }, live: 'nowplaying', span: { w: 2, h: 2 }, hold: { type: 'media', key: 'next' } }),
+      k('Weather', { type: 'open', target: 'Weather' }, { icon: { symbol: 'cloud-sun' }, live: 'weather', span: { w: 2, h: 2 } }),
+    ],
+  },
   {
     title: 'Media',
     keys: [
@@ -32,6 +44,7 @@ const SECTIONS: { title: string; keys: Key[] }[] = [
       k('CPU', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'cpu' }, live: 'cpu' }),
       k('Memory', { type: 'open', target: 'Activity Monitor' }, { icon: { symbol: 'memory-stick' }, live: 'memory' }),
       k('Battery', { type: 'open', target: 'x-apple.systempreferences:com.apple.Battery-Settings.extension' }, { icon: { symbol: 'battery' }, live: 'macbattery' }),
+      k('Weather', { type: 'open', target: 'Weather' }, { icon: { symbol: 'cloud-sun' }, live: 'weather' }),
       k('Headphones', { type: 'app', app: 'hush' }, { live: 'battery' }),
     ],
   },
@@ -89,7 +102,8 @@ export function Library({ api, state, style, drag }: {
   const [w, setW] = useState(300);
   const wide = w > 500; // portrait: the library spans the screen under the grid
   const cols = wide ? 7 : 3;
-  const tile = Math.floor((w - 28 - 10 * (cols - 1)) / cols);
+  // Inside the 14pt padding and the hairline border; a tile rounded a hair too wide wraps the row early.
+  const tile = Math.floor((w - 28 - 2 * StyleSheet.hairlineWidth - 10 * (cols - 1)) / cols) - 1;
   useEffect(() => {
     api.apps().then(setApps, () => {});
     api.shortcuts().then(setShortcuts, () => {});
@@ -126,7 +140,8 @@ export function Library({ api, state, style, drag }: {
             <View style={st.grid}>
               {s.keys.map((key, i) => (
                 <KeyTile key={`${s.title}${i}`} id={`lib/${s.title}/${i}`} k={key} size={tile} api={api} state={state}
-                  editing={false} picked={false} drag={drag(key)} onPress={() => {}} onLongPress={() => {}} />
+                  width={spanOf(key).w * tile + (spanOf(key).w - 1) * 10} height={spanOf(key).h * tile + (spanOf(key).h - 1) * 10}
+                  editing={false} picked={false} titles drag={drag(key)} onPress={() => {}} onLongPress={() => {}} />
               ))}
             </View>
           </View>

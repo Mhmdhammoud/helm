@@ -18,12 +18,16 @@ export type Action =
   | { type: 'toggle'; on: Action; off: Action };
 export type ActionType = Action['type'];
 
-export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock';
+export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle' | 'nowplaying' | 'cpu' | 'memory' | 'macbattery' | 'clock' | 'system' | 'weather';
 export type Key = {
   title?: string;
   icon?: { symbol?: string; emoji?: string; app?: string };
   color?: string;
   live?: Live;
+  /** Widgets span several slots, from this key's slot rightwards and down. */
+  span?: { w: number; h: number };
+  /** Weather: the city to show (default: the Mac's time-zone city). */
+  place?: string;
   /** Runs instead of `action` when the key is held ≥500ms (outside Edit mode). */
   hold?: Action;
   action: Action;
@@ -66,7 +70,10 @@ export type State = {
   cpu?: number;
   memory?: number;
   macBattery?: MacBattery;
+  weather?: Weather | null;
 };
+/** Open-Meteo: `code` is a WMO weather code. */
+export type Weather = { place: string; temp: number; code: number; day: boolean; hi: number; lo: number };
 export type RunningApp = { name: string; path: string };
 
 /** A paired Mac, as remembered on this iPad. `id` is the bridge's stable id (missing for Macs paired before ids). */

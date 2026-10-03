@@ -16,6 +16,7 @@ import type { Client } from './api';
 import { Symbol, defaultSymbol } from './Symbol';
 import type { Key, State } from './types';
 import { C, SPRING } from './theme';
+import { WIDGET_LIVE, WidgetFace, weatherLook } from './Widget';
 
 /** `title` replaces the key's title, `face` replaces its icon with big text, `art` is a GET /artwork version shown behind it. */
 type LiveView = { sub?: string; on?: boolean; alert?: boolean; level?: number; title?: string; face?: string; art?: string };
@@ -54,6 +55,12 @@ export function liveView(k: Key, state: State | null, id: string): LiveView {
       if (b.percent == null) return { sub: 'AC' };
       return { sub: `${b.percent}%${b.charging ? ' ⚡︎' : ''}`, level: b.percent / 100, alert: b.percent <= 20 && !b.charging };
     }
+    case 'system':
+      return { ...gauge(state?.cpu), sub: state?.cpu == null ? undefined : `CPU ${state.cpu}% · ${state.memory ?? '–'}%` };
+    case 'weather': {
+      const w = state?.weather;
+      return w ? { face: `${w.temp}°`, sub: weatherLook(w).label } : { sub: w === null ? 'Unavailable' : undefined };
+    }
     case 'clock': {
       const now = new Date();
       return { face: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), sub: now.toLocaleDateString([], { weekday: 'short', day: 'numeric' }) };
@@ -88,15 +95,20 @@ export type DragProps = {
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-export function KeyTile({ k, id, size, api, state, editing, picked, feedback, drag, onPress, onLongPress }: {
+export function KeyTile({ k, id, size, width, height, api, state, editing, picked, feedback, drag, titles = false, onPress, onLongPress }: {
   k?: Key;
   id: string;
+  /** One slot's size; `width`/`height` (default `size`) are the key's own, larger for widgets. */
   size: number;
+  width?: number;
+  height?: number;
   api: Client;
   state: State | null;
   editing: boolean;
   picked: boolean;
   feedback?: Feedback;
+  /** Show key names (the library); deck keys are icons plus any live reading. */
+  titles?: boolean;
   /** Makes the key draggable (edit mode, library). */
   drag?: DragProps;
   onPress: () => void;
@@ -104,6 +116,11 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
 }) {
   useMinuteTick(k?.live === 'clock');
   const live: LiveView = k ? liveView(k, state, id) : {};
+  const W = width ?? size;
+  const H = height ?? size;
+  // An app key with nothing live is just its icon: the icon already is a rounded square, so it fills the key.
+  const appOnly = !titles && !!k?.icon?.app && !k.live && !k.color;
+  const widget = !!k && (W > size * 1.2 || H > size * 1.2) && (WIDGET_LIVE as readonly string[]).includes(k.live ?? '');
   const radius = size * 0.22;
   const press = useSharedValue(0);
   const wiggle = useSharedValue(0);
@@ -148,14 +165,14 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
 
   // Canvases overhang the key by `pad` so shadows and glows fade out instead of clipping.
   const pad = Math.round(size * 0.14);
-  const canvas = { position: 'absolute' as const, left: -pad, top: -pad, width: size + pad * 2, height: size + pad * 2 };
-  const rect = Skia.XYWHRect(1, 1, size - 2, size - 2);
+  const canvas = { position: 'absolute' as const, left: -pad, top: -pad, width: W + pad * 2, height: H + pad * 2 };
+  const rect = Skia.XYWHRect(1, 1, W - 2, H - 2);
   const rrect = Skia.RRectXY(rect, radius, radius);
   const outline = Skia.PathBuilder.Make().addRRect(rrect).build();
   const lit = live.on;
   const tint = k?.color;
   const glyph = lit ? C.bg : live.alert ? C.danger : C.text;
-  const iconSize = size * 0.3;
+  const iconSize = size * (titles || live.sub ? 0.3 : 0.4);
   const level = live.level;
 
   return (
@@ -168,27 +185,29 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
       onPressOut={() => { press.value = withSpring(0, SPRING); }}
       accessibilityRole="button"
       accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}>
-      <Animated.View style={[{ width: size, height: size }, body]}>
+      <Animated.View style={[{ width: W, height: H }, body]}>
         <Canvas style={canvas}>
           <Group transform={[{ translateX: pad }, { translateY: pad }]}>
-          {k ? (
+          {k && appOnly ? (
+            picked ? <Path path={outline} style="stroke" strokeWidth={3} color={C.silver} /> : null
+          ) : k ? (
             <>
               <RoundedRect rect={rrect}>
-                <LinearGradient start={vec(0, 0)} end={vec(0, size)} colors={lit ? ['#f1f3f6', '#b9bfc7'] : ['#22252a', '#121316']} />
+                <LinearGradient start={vec(0, 0)} end={vec(0, H)} colors={lit ? ['#f1f3f6', '#b9bfc7'] : ['#22252a', '#121316']} />
                 <Shadow dx={0} dy={size * 0.04} blur={size * 0.08} color="#000000aa" />
               </RoundedRect>
               {tint && !lit && (
                 <RoundedRect rect={rrect}>
-                  <LinearGradient start={vec(0, 0)} end={vec(size, size)} colors={[`${tint}66`, `${tint}1f`]} />
+                  <LinearGradient start={vec(0, 0)} end={vec(W, H)} colors={[`${tint}66`, `${tint}1f`]} />
                 </RoundedRect>
               )}
               {/* bevel: light catches the top edge, the bottom falls away */}
               <Path path={outline} style="stroke" strokeWidth={1.2}>
-                <LinearGradient start={vec(0, 0)} end={vec(0, size)} colors={[lit ? '#ffffffcc' : '#ffffff40', '#ffffff08', '#00000060']} />
+                <LinearGradient start={vec(0, 0)} end={vec(0, H)} colors={[lit ? '#ffffffcc' : '#ffffff40', '#ffffff08', '#00000060']} />
               </Path>
               {live.alert && <Path path={outline} style="stroke" strokeWidth={2} color={C.danger} />}
               {picked && <Path path={outline} style="stroke" strokeWidth={3} color={C.silver} />}
-              {level != null && (
+              {level != null && !widget && (
                 <>
                   <RoundedRect x={size * 0.22} y={size * 0.86} width={size * 0.56} height={3} r={1.5} color={lit ? '#00000022' : '#ffffff18'} />
                   <RoundedRect x={size * 0.22} y={size * 0.86} width={Math.max(3, size * 0.56 * Math.min(1, level))} height={3} r={1.5}
@@ -209,8 +228,8 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
           </Group>
         </Canvas>
 
-        {live.art && (
-          <View style={[st.art, { width: size - 4, height: size - 4, borderRadius: radius - 1 }]} pointerEvents="none">
+        {live.art && !widget && (
+          <View style={[st.art, { width: W - 4, height: H - 4, borderRadius: radius - 1 }]} pointerEvents="none">
             <Image source={api.artwork(live.art)} style={StyleSheet.absoluteFill} />
             <View style={[StyleSheet.absoluteFill, st.artShade]} />
           </View>
@@ -226,8 +245,16 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
           </Canvas>
         </Animated.View>
 
+        {widget && k && (
+          <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
+            <WidgetFace k={k} state={state} api={api} width={W} height={H} unit={size} />
+          </View>
+        )}
         <View style={[StyleSheet.absoluteFill, st.content, live.art && st.contentArt, { padding: size * 0.08 }, level != null && { paddingBottom: size * 0.2 }]} pointerEvents="none">
-          {k ? (
+          {widget ? null : appOnly && k?.icon?.app ? (
+            // macOS icons leave ~10% transparent margin around the shape; scale past it so the shape meets the key's edges.
+            <Image source={api.icon(k.icon.app)} style={{ width: W * 1.2, height: H * 1.2 }} />
+          ) : k ? (
             <>
               {live.face ? (
                 <Text style={[st.face, { color: glyph, fontSize: size * 0.24 }]} numberOfLines={1} adjustsFontSizeToFit>{live.face}</Text>
@@ -238,7 +265,7 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, dr
               ) : (
                 <Text style={{ fontSize: iconSize * 1.1 }}>{k.icon.emoji}</Text>
               )}
-              {!!(live.title ?? k.title) && (
+              {!!(live.title ?? (titles ? k.title : undefined)) && (
                 <Text style={[st.title, { color: lit ? C.bg : C.text, fontSize: Math.max(12, size * 0.105) }]} numberOfLines={1}>{live.title ?? k.title}</Text>
               )}
               {live.sub && (

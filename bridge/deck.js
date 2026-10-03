@@ -9,7 +9,7 @@ export const ACTION_TYPES = [
   'hotkey', 'open', 'text', 'media', 'volume', 'shortcut', 'script', 'mic', 'system',
   'hush', 'page', 'back', 'app', 'multi', 'toggle',
 ];
-export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock'];
+export const LIVE = ['mic', 'volume', 'battery', 'anc', 'toggle', 'nowplaying', 'cpu', 'memory', 'macbattery', 'clock', 'system', 'weather'];
 
 const key = (title, action, extra = {}) => ({ title, action, ...extra });
 
@@ -86,6 +86,11 @@ export function validateDeck(d) {
       checkAction(k?.action, `${p.id}[${slot}]`);
       if (k.hold != null) checkAction(k.hold, `${p.id}[${slot}].hold`);
       if (k.live && !LIVE.includes(k.live)) throw new BadRequest(`${p.id}[${slot}]: unknown live source`);
+      // Widgets span slots from their own slot rightwards and down. One that no longer fits the grid is hidden, not refused.
+      if (k.span != null && !(Number.isInteger(k.span.w) && Number.isInteger(k.span.h) && k.span.w >= 1 && k.span.w <= 4 && k.span.h >= 1 && k.span.h <= 3)) {
+        throw new BadRequest(`${p.id}[${slot}]: span must be 1–4 wide and 1–3 tall`);
+      }
+      if (k.place != null && (typeof k.place !== 'string' || k.place.length > 80)) throw new BadRequest(`${p.id}[${slot}]: place must be a short name`);
     }
   }
   return d;

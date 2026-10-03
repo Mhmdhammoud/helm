@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { Client } from './api';
@@ -6,6 +6,7 @@ import { Dial } from './Dial';
 import { Fader } from './Fader';
 import { KeyEditor } from './Editor';
 import { KeyTile, type DragProps, type Feedback } from './KeyTile';
+import { layout, place, spanOf } from './grid';
 import { usePageKeys } from './running';
 import { Library } from './Library';
 import { Symbol } from './Symbol';
@@ -100,13 +101,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       return;
     }
     if (!d || slot == null || slot === d.from) return;
-    const keys = { ...page.keys };
-    if (d.from != null) {
-      // Moving within the page swaps with whatever was there.
-      const there = keys[slot];
-      if (there) keys[d.from] = there; else delete keys[d.from];
-    }
-    keys[slot] = d.k;
+    // Single keys swap (or replace, from the library); widgets need free room.
+    const keys = place(page.keys, cols, rows, d.k, slot, d.from);
+    if (!keys) return setFlash(`Not enough room there for a ${spanOf(d.k).w}×${spanOf(d.k).h} widget.`);
     updatePage({ keys });
     flashKey(`${page.id}/${slot}`, true);
   };
@@ -192,6 +189,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     });
 
   const gap = 16;
+  const grid = useMemo(() => layout(keys, cols, rows), [keys, cols, rows]);
   // Portrait: the keys take about half the screen and the controls tray gets the rest (no dead bands).
   const availH = portrait ? win.height * (editing ? 0.42 : 0.5) : area.h;
   const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (availH - gap * (rows - 1)) / rows));
@@ -242,29 +240,31 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         <View style={[st.grid, portrait && { flex: 0, height: size > 0 ? rows * size + gap * (rows - 1) : availH }, !!error && st.offline]}
           onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
           {size > 0 && (
-            <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
-              {Array.from({ length: rows }, (_, r) => (
-                <View key={r} style={[st.gridRow, { gap }]}>
-                  {Array.from({ length: cols }, (_, c) => {
-                    const slot = String(r * cols + c);
-                    const slotId = `${page.id}/${slot}`;
-                    const lifted = drag?.from === slot;
-                    return (
-                      // Never flattened: if this view only appeared when the drag starts (opacity), the native tree
-                      // would re-parent the key mid-gesture and cancel the drag.
-                      <View key={slot} collapsable={false} style={{ opacity: lifted ? 0.25 : 1 }}>
-                        <KeyTile id={slotId} k={keys[slot]} size={size} api={api} state={state}
-                          editing={editing && !drag} picked={hover === slot && !lifted} feedback={feedback[slotId]} onPress={() => press(slot)}
-                          drag={editing && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
-                          onLongPress={() => {
-                            const held = keys[slot]?.hold;
-                            if (!editing) held ? fire(keys[slot], held, slotId, `${slotId}:hold`) : setEditing(true);
-                          }} />
-                      </View>
-                    );
-                  })}
-                </View>
-              ))}
+            // Absolutely placed so widgets can span slots; a slot under a widget isn't drawn.
+            <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)}
+              style={{ width: cols * size + (cols - 1) * gap, height: rows * size + (rows - 1) * gap }}>
+              {Array.from({ length: cols * rows }, (_, i) => {
+                const slot = String(i);
+                if (grid.owner[i] != null && grid.owner[i] !== slot) return null;
+                const k = grid.owner[i] === slot ? keys[slot] : undefined;
+                const { w, h } = spanOf(k);
+                const slotId = `${page.id}/${slot}`;
+                const lifted = drag?.from === slot;
+                return (
+                  // Never flattened: if this view only appeared when the drag starts (opacity), the native tree
+                  // would re-parent the key mid-gesture and cancel the drag.
+                  <View key={slot} collapsable={false}
+                    style={{ position: 'absolute', left: (i % cols) * (size + gap), top: Math.floor(i / cols) * (size + gap), opacity: lifted ? 0.25 : 1 }}>
+                    <KeyTile id={slotId} k={k} size={size} width={w * size + (w - 1) * gap} height={h * size + (h - 1) * gap} api={api} state={state}
+                      editing={editing && !drag} picked={hover === slot && !lifted} feedback={feedback[slotId]} onPress={() => press(slot)}
+                      drag={editing && k && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
+                      onLongPress={() => {
+                        const held = k?.hold;
+                        if (!editing) held ? fire(k, held, slotId, `${slotId}:hold`) : setEditing(true);
+                      }} />
+                  </View>
+                );
+              })}
             </Animated.View>
           )}
         </View>
@@ -325,11 +325,16 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       </Text>
       )}
 
-      {drag && (
-        <Animated.View pointerEvents="none" style={[st.floating, { width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 }, floating]}>
-          <KeyTile id="drag" k={drag.k} size={size} api={api} state={state} editing={false} picked onPress={() => {}} onLongPress={() => {}} />
-        </Animated.View>
-      )}
+      {drag && (() => {
+        const { w, h } = spanOf(drag.k);
+        const W = w * size + (w - 1) * gap, H = h * size + (h - 1) * gap;
+        // Held by its top-left slot, the one it drops into.
+        return (
+          <Animated.View pointerEvents="none" style={[st.floating, { width: W, height: H, marginLeft: -size / 2, marginTop: -size / 2 }, floating]}>
+            <KeyTile id="drag" k={drag.k} size={size} width={W} height={H} api={api} state={state} editing={false} picked onPress={() => {}} onLongPress={() => {}} />
+          </Animated.View>
+        );
+      })()}
 
       {editSlot != null && (
         <KeyEditor initial={page.keys[editSlot] ?? null} api={api} pages={deck.pages} state={state}

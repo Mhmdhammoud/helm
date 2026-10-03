@@ -1,4 +1,4 @@
-// Live Mac info for keys (now playing, CPU, memory, battery) and the running-apps page.
+// Live Mac info for keys (now playing, CPU, memory, battery, weather) and the running-apps page.
 // Everything is sampled lazily when an iPad asks, at most every 2s, and only for sources the deck uses.
 import { makeOsa } from './runner.js';
 import { createHash } from 'node:crypto';
@@ -9,6 +9,11 @@ import { realExec } from './actions.js';
 import { loadDeck } from './deck.js';
 
 const TTL = 2000;
+const WEATHER_TTL = 15 * 60_000;
+const WEATHER_RETRY = 2 * 60_000;
+
+/** Where the weather is for when no key names a place: the city in the Mac's time zone ("Europe/Istanbul" → "Istanbul"). */
+export const homePlace = (tz = Intl.DateTimeFormat().resolvedOptions().timeZone) => tz?.split('/').pop()?.replace(/_/g, ' ') || null;
 // Player apps are only queried while running: a `tell` would launch them, or ask where Spotify is if it isn't installed.
 const PLAYERS = {
   Spotify: `tell application "Spotify"
@@ -61,7 +66,7 @@ export function macBattery(pmset) {
   return { percent: m ? Number(m[1]) : null, charging: m ? /^(charging|finishing charge)/.test(m[2]) : false, ac: /'AC Power'/.test(pmset) };
 }
 
-export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date.now }) {
+export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date.now, fetch = globalThis.fetch }) {
   // Its own long-lived osascript for the now-playing poll, so a slow Music/Spotify query never queues
   // behind (or delays) a key press on the actions runner. Tests with a recording exec see one-shot calls.
   const osa = exec === realExec ? makeOsa({ exec }) : (script, args = []) => exec('osascript', ['-e', script, ...args]);
@@ -103,10 +108,43 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
     return { ...rest, art: await artwork(best.app, id, url) };
   }
 
-  async function sample(want) {
+  // Open-Meteo: free, no key. The place is geocoded once per name; the forecast is kept 15 minutes.
+  let weatherCache = null; // { place, at, value }
+  const getJson = async url => {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`weather: HTTP ${r.status}`);
+    return r.json();
+  };
+  async function weather(place) {
+    if (!place) return null;
+    if (weatherCache?.place === place && now() - weatherCache.at < (weatherCache.value ? WEATHER_TTL : WEATHER_RETRY)) return weatherCache.value;
+    let value = null;
+    try {
+      const geo = (await getJson(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place)}`)).results?.[0];
+      if (geo) {
+        const f = await getJson(`https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}` +
+          '&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto');
+        value = {
+          place: geo.name,
+          temp: Math.round(f.current.temperature_2m),
+          code: f.current.weather_code,
+          day: f.current.is_day === 1,
+          hi: Math.round(f.daily.temperature_2m_max[0]),
+          lo: Math.round(f.daily.temperature_2m_min[0]),
+        };
+      }
+    } catch {}
+    weatherCache = { place, at: now(), value };
+    return value;
+  }
+
+  async function sample(want, place) {
     const out = {};
     const jobs = [];
     if (want.has('nowplaying')) jobs.push(nowPlaying().then(v => { out.nowPlaying = v; }, () => { out.nowPlaying = null; }));
+    // The system widget shows all three Mac stats.
+    if (want.has('system')) ['cpu', 'memory', 'macbattery'].forEach(w => want.add(w));
+    if (want.has('weather')) jobs.push(weather(place).then(v => { out.weather = v; }));
     if (want.has('cpu')) {
       const next = cpus();
       out.cpu = cpuLoad(prevCpu, next);
@@ -121,10 +159,13 @@ export function makeFeatures({ exec = realExec, supportDir, deckFile, now = Date
   return {
     /** Extra /state fields for the live sources this deck uses, cached for 2s. */
     state() {
-      let want;
-      try { want = new Set(loadDeck(deckFile).pages.flatMap(p => Object.values(p.keys ?? {}).map(k => k.live))); } catch { return Promise.resolve({}); }
-      const key = [...want].sort().join();
-      if (!cache || now() - cache.at >= TTL || cache.key !== key) cache = { at: now(), key, promise: sample(want) };
+      let keys;
+      try { keys = loadDeck(deckFile).pages.flatMap(p => Object.values(p.keys ?? {})); } catch { return Promise.resolve({}); }
+      const want = new Set(keys.map(k => k.live));
+      // ponytail: one weather place per deck (the first weather key's), add per-key places if people want several cities.
+      const place = keys.find(k => k.live === 'weather' && k.place)?.place || homePlace();
+      const key = [...want].sort().join() + place;
+      if (!cache || now() - cache.at >= TTL || cache.key !== key) cache = { at: now(), key, promise: sample(want, place) };
       return cache.promise;
     },
     /** Streams the current track's artwork PNG (GET /artwork). */

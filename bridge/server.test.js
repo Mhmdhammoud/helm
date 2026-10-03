@@ -65,6 +65,31 @@ test('the Mission Control shortcut opens Mission Control (macOS ignores a synthe
   assert.deepEqual(calls.at(-1), ['open', '-a', 'Mission Control']);
 });
 
+test('widgets: the system widget samples all Mac stats, weather comes from Open-Meteo for the key\'s place', async t => {
+  const urls = [];
+  const fetch = async url => {
+    urls.push(url);
+    const body = url.includes('geocoding')
+      ? { results: [{ name: 'Paris', latitude: 48.85, longitude: 2.35 }] }
+      : { current: { temperature_2m: 17.6, weather_code: 3, is_day: 1 }, daily: { temperature_2m_max: [21.2], temperature_2m_min: [11.4] } };
+    return { ok: true, json: async () => body };
+  };
+  const { call } = await start(t, { fetch });
+  const deck = (await call('GET', '/deck')).body;
+  deck.pages[0].keys = { 0: { title: 'Weather', action: { type: 'open', target: 'Weather' }, live: 'weather', place: 'Paris', span: { w: 2, h: 1 } }, 2: { action: { type: 'open', target: 'Activity Monitor' }, live: 'system' } };
+  assert.equal((await call('PUT', '/deck', deck)).status, 200);
+  const s = (await call('GET', '/state')).body;
+  assert.deepEqual(s.weather, { place: 'Paris', temp: 18, code: 3, day: true, hi: 21, lo: 11 });
+  assert.equal(typeof s.cpu, 'number');
+  assert.equal(typeof s.memory, 'number');
+  assert.ok(s.macBattery);
+  assert.match(urls[0], /name=Paris/);
+  await call('GET', '/state');
+  assert.equal(urls.length, 2, 'the forecast is cached');
+  deck.pages[0].keys[0].span = { w: 9, h: 1 };
+  assert.equal((await call('PUT', '/deck', deck)).status, 400, 'span is bounded');
+});
+
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
   const h = harness();
   let allowed = true;

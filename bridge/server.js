@@ -90,13 +90,13 @@ function watchVolume(onChange) {
 
 export function serve({
   port = PORT, exec = realExec, hushState = HUSH_STATE, supportDir = SUPPORT, name = 'Mac',
-  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now, notifier = process.env.HELM_NOTIFIER,
+  pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now, notifier = process.env.HELM_NOTIFIER, fetch = globalThis.fetch,
 } = {}) {
   const deckFile = join(supportDir, 'deck.json');
   const tokensFile = join(supportDir, 'tokens.json');
   const id = bridgeId(supportDir);
   const runner = makeRunner({ exec, supportDir });
-  const features = makeFeatures({ exec, supportDir, deckFile });
+  const features = makeFeatures({ exec, supportDir, deckFile, fetch });
   const authed = h => /^Bearer .+/.test(h ?? '') && !!loadTokens(tokensFile)[sha(h.slice(7))];
 
   // One pairing code at a time, valid 2 minutes, burned after 5 wrong guesses. Across codes: a new code at
