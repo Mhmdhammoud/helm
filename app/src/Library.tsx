@@ -72,15 +72,11 @@ const SECTIONS: { title: string; keys: Key[] }[] = [
 const FAVOURITE_APPS = ['Safari', 'Google Chrome', 'Arc', 'Mail', 'Messages', 'Slack', 'zoom.us', 'Notes', 'Calendar', 'Music',
   'Spotify', 'Finder', 'Terminal', 'Visual Studio Code', 'Cursor', 'Xcode', 'Figma', 'Notion', 'Claude', 'ChatGPT', 'System Settings'];
 
-/**
- * Edit-mode side panel of ready-made keys. Tap one to drop it into the next empty slot,
- * or hold and drag it onto any slot.
- */
-export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
+/** Edit-mode panel of ready-made keys: hold one briefly and drag it onto a slot. */
+export function Library({ api, state, dragging, style, onDragStart }: {
   style?: StyleProp<ViewStyle>;
   api: Client;
   state: State | null;
-  onAdd: (k: Key) => void;
   onDragStart: (k: Key) => void;
   /** While a key is being dragged the list must not scroll, or it steals the touch. */
   dragging: boolean;
@@ -129,14 +125,14 @@ export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
             <View style={st.grid}>
               {s.keys.map((key, i) => (
                 <KeyTile key={`${s.title}${i}`} id={`lib/${s.title}/${i}`} k={key} size={tile} api={api} state={state}
-                  editing={false} picked={false} onPress={() => onAdd(key)} onLongPress={() => onDragStart(key)} />
+                  editing={false} picked={false} holdMs={150} onPress={() => {}} onLongPress={() => onDragStart(key)} />
               ))}
             </View>
           </View>
         ))}
         {!sections.length && <Text style={st.empty}>Nothing matches “{q}”.</Text>}
       </ScrollView>
-      {!wide && <Text style={st.hint}>Tap to add · hold and drag onto a slot</Text>}
+      <Text style={st.hint}>Hold a key, then drag it onto a slot</Text>
     </Animated.View>
   );
 }

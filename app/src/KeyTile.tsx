@@ -78,7 +78,7 @@ function useMinuteTick(on: boolean) {
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-export function KeyTile({ k, id, size, api, state, editing, picked, feedback, onPress, onLongPress }: {
+export function KeyTile({ k, id, size, api, state, editing, picked, feedback, holdMs, onPress, onLongPress }: {
   k?: Key;
   id: string;
   size: number;
@@ -87,6 +87,8 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
   editing: boolean;
   picked: boolean;
   feedback?: Feedback;
+  /** Long-press delay; the library uses a short one so picking a key up feels immediate. */
+  holdMs?: number;
   onPress: () => void;
   onLongPress: () => void;
 }) {
@@ -139,7 +141,7 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={!editing && k?.hold ? 500 : 350}
+      delayLongPress={holdMs ?? (!editing && k?.hold ? 500 : 350)}
       onPressIn={() => { press.value = withSpring(1, SPRING); }}
       onPressOut={() => { press.value = withSpring(0, SPRING); }}
       accessibilityRole="button"

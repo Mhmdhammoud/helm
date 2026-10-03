@@ -99,6 +99,12 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+// Apps people swap between; only the installed ones are offered, and only when there's a choice.
+const APP_KINDS: Record<string, string[]> = {
+  Browsers: ['Safari', 'Google Chrome', 'Arc', 'Firefox', 'Brave Browser', 'Microsoft Edge', 'Opera', 'Vivaldi', 'Orion', 'Zen', 'Dia', 'Chromium', 'Comet'],
+  Terminals: ['Terminal', 'iTerm', 'cmux', 'Ghostty', 'Warp', 'WezTerm', 'Alacritty', 'kitty', 'Hyper'],
+};
+
 /** Configures one action: a type picker, then the fields for that type. Nested inside steps and toggles. */
 export function ActionForm({ action, onChange, api, pages, nested }: {
   action: Action;
@@ -130,6 +136,23 @@ export function ActionForm({ action, onChange, api, pages, nested }: {
         <Group title="App, file or website">
           <Input value={action.target} onChangeText={target => set({ target })} placeholder="Safari, ~/Notes.md, https://…" />
           <Suggest list={apps} query={action.target} onPick={target => set({ target })} />
+          {Object.entries(APP_KINDS).map(([kind, names]) => {
+            const installed = names.filter(n => apps.includes(n));
+            return installed.length > 1 && (
+              <View key={kind} style={st.kind}>
+                <Text style={st.kindTitle}>{kind}</Text>
+                <View style={st.kindRow}>
+                  {installed.map(n => (
+                    <Pressable key={n} onPress={() => set({ target: n })} accessibilityLabel={`Open ${n}`}
+                      style={({ pressed }) => [st.kindApp, action.target === n && st.kindOn, pressed && { opacity: 0.6 }]}>
+                      <Image source={api.icon(n)} style={st.appIcon} />
+                      <Text style={st.kindName} numberOfLines={1}>{n}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            );
+          })}
         </Group>
       )}
       {action.type === 'hotkey' && <HotkeyForm keyName={action.key} mods={action.mods} set={set} />}
@@ -535,6 +558,12 @@ const st = StyleSheet.create({
   cellWide: { width: 76, height: 68, gap: 4 },
   cellLabel: { color: C.dim, fontSize: 11, fontWeight: '600' },
   appIcon: { width: 28, height: 28 },
+  kind: { marginTop: 14, gap: 8 },
+  kindTitle: { color: C.label, fontSize: 11, letterSpacing: 1.4, fontWeight: '600', textTransform: 'uppercase' },
+  kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  kindApp: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingLeft: 6, paddingRight: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline },
+  kindOn: { borderColor: C.silver, backgroundColor: 'rgba(255,255,255,0.12)' },
+  kindName: { color: C.text, fontSize: 14, maxWidth: 140 },
   emojiCell: { fontSize: 20 },
   emojiInput: { marginTop: 12, width: 260, fontSize: 22 },
 });

@@ -15,6 +15,8 @@ type Props = {
   /** Arc grows from the middle (EQ) instead of from min (ANC). */
   bipolar?: boolean;
   format?: (v: number) => string;
+  /** Double-tap action (volume: mute on/off). Without it, double-tap centres a bipolar dial. */
+  onDoubleTap?: () => void;
 };
 
 // Softer than the app SPRING so the indicator visibly settles into its detent.
@@ -29,7 +31,9 @@ const SEND_MS = 80; // at most one onChange per 80ms
  * continuously with a soft pull toward each whole step, and springs into the step on release.
  * Double-tap centres a bipolar dial.
  */
-export function Dial({ value, min, max, size, label, onChange, bipolar, format = String }: Props) {
+export function Dial({ value, min, max, size, label, onChange, bipolar, format = String, onDoubleTap }: Props) {
+  const doubleTap = useRef(onDoubleTap);
+  doubleTap.current = onDoubleTap;
   const range = max - min;
   const [step, setStep] = useState(value);
   const pos = useSharedValue(value); // continuous position, drives the drawing on the UI thread
@@ -136,9 +140,10 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
         const L = live.current;
         const now = Date.now();
         if (travel < 8) {
-          if (now - lastTap < 320 && bipolar) {
+          if (now - lastTap < 320 && (doubleTap.current || bipolar)) {
             lastTap = 0;
-            act.current.moveTo((L.min + L.max) / 2, true);
+            if (doubleTap.current) doubleTap.current();
+            else act.current.moveTo((L.min + L.max) / 2, true);
           } else lastTap = now;
         }
         act.current.moveTo(L.step, true);
@@ -212,8 +217,9 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
       accessibilityRole="adjustable"
       accessibilityLabel={label}
       accessibilityValue={{ text: format(step) }}
-      accessibilityActions={accessibilityActions}
+      accessibilityActions={onDoubleTap ? [...accessibilityActions, { name: 'activate' }] : accessibilityActions}
       onAccessibilityAction={e => {
+        if (e.nativeEvent.actionName === 'activate') return onDoubleTap?.();
         moveTo(step + (e.nativeEvent.actionName === 'increment' ? 1 : -1), true);
         release();
       }}>

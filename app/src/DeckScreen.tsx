@@ -77,13 +77,6 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     updatePage({ keys });
   };
 
-  const firstEmpty = () => Array.from({ length: cols * rows }, (_, i) => String(i)).find(i => !page.keys[i]);
-  const addKey = (k: Key, slot = firstEmpty()) => {
-    if (slot == null) return setFlash('This page is full. Add a page or make the grid bigger.');
-    setKey(slot, k);
-    flashKey(`${page.id}/${slot}`, true);
-  };
-
   const startDrag = (k: Key, from?: string) => {
     rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; });
     gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; });
@@ -140,6 +133,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       onPanResponderTerminate: () => dropRef.current(slotAtRef.current(lastTouch.current.x, lastTouch.current.y), lastTouch.current.x, lastTouch.current.y),
     }),
   ).current;
+
+  // A drag picked up but let go without moving never reaches dragPan (it only captures moves), so it would
+  // stay "active" and keep the library from scrolling. Deferred so a real drop (release) goes first.
+  const endHeldDrag = () => {
+    const d = dragRef.current;
+    if (d) setTimeout(() => { if (dragRef.current === d) { setDrag(null); setHover(null); } }, 50);
+  };
 
   const press = (slot: string) => {
     const k = keys[slot];
@@ -235,7 +235,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   ];
 
   return (
-    <View style={st.root} ref={rootRef} {...dragPan.panHandlers}>
+    <View style={st.root} ref={rootRef} {...dragPan.panHandlers} onTouchEnd={endHeldDrag} onTouchCancel={endHeldDrag}>
       <View style={st.top}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.tabScroll} contentContainerStyle={st.tabsRow}>
           <PageTabs tabs={tabs} current={pageId}
@@ -283,16 +283,21 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
 
         {editing ? (
           <Library api={api} state={state} dragging={!!drag} style={portrait ? st.libraryPortrait : undefined}
-            onAdd={k => addKey(k)} onDragStart={k => startDrag(k)} />
+            onDragStart={k => startDrag(k)} />
         ) : (dials.length > 0) && (
           // Landscape: a column to the right of the keys. Portrait: a row under them.
           <View style={portrait ? st.stripRow : st.strip}>
             {(dials.includes('volume') || dials.includes('anc')) && (
               <View style={portrait ? st.dialsRow : st.dials}>
                 {dials.includes('volume') && (
-                  <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={portrait ? 230 : 180} label="VOLUME"
-                    format={v => (v === Math.round((state?.mac?.volume ?? 0) / 5) ? String(state?.mac?.volume ?? 0) : String(v * 5))}
-                    onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
+                  // Double-tap mutes and unmutes; turning it unmutes too, since it moves by the volume keys.
+                  <View style={state?.mac?.muted && st.inert}>
+                    <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={portrait ? 230 : 180}
+                      label={state?.mac?.muted ? 'MUTED' : 'VOLUME'}
+                      format={v => (v === Math.round((state?.mac?.volume ?? 0) / 5) ? String(state?.mac?.volume ?? 0) : String(v * 5))}
+                      onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})}
+                      onDoubleTap={() => api.run({ type: 'volume', mute: 'toggle' }).catch(() => {})} />
+                  </View>
                 )}
                 {dials.includes('anc') && state?.headphones && (
                   // Headphones off: show it dimmed and inert rather than a misleading "0".
