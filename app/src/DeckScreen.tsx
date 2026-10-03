@@ -110,6 +110,16 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     flashKey(`${page.id}/${slot}`, true);
   };
   // Gesture handlers for a draggable key (a grid key in edit mode, or a library key when `from` is unset).
+  // Keys skip re-rendering when nothing they show changed (KeyTile is memoised), so their handlers must never
+  // hold an old render's deck: each slot gets stable handlers that call this render's functions.
+  const latest = useRef({ press: (_: string) => {}, longPress: (_: string) => {}, remove: (_: string) => {}, drop: (_s: string | null, _x?: number, _y?: number) => {} });
+  const perSlot = useRef<Record<string, { press: () => void; longPress: () => void; remove: () => void }>>({});
+  const handlers = (slot: string) => (perSlot.current[slot] ??= {
+    press: () => latest.current.press(slot),
+    longPress: () => latest.current.longPress(slot),
+    remove: () => latest.current.remove(slot),
+  });
+
   // Follows the finger on the UI thread: moves the floating key and marks the slot under it.
   const moveDrag = (x: number, y: number) => {
     'worklet';
@@ -125,7 +135,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     move: moveDrag,
     onStart: () => startDrag(k, from),
     onEnd: (x, y, canceled) => {
-      if (!canceled) return drop(slotAt(x, y), x, y);
+      if (!canceled) return latest.current.drop(slotAt(x, y), x, y);
       setDrag(null);
       hover.value = -1;
     },
@@ -195,6 +205,15 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       setStack(s => [...s, id]);
     });
 
+  latest.current = {
+    press,
+    longPress: slot => {
+      const k = keys[slot];
+      if (!editing) k?.hold ? fire(k, k.hold, `${page.id}/${slot}`, `${page.id}/${slot}:hold`) : setEditing(true);
+    },
+    remove: slot => setKey(slot, null),
+    drop,
+  };
   const gap = 16;
   const grid = useMemo(() => layout(keys, cols, rows), [keys, cols, rows]);
   // Portrait: the keys take about half the screen and the controls tray gets the rest (no dead bands).
@@ -263,12 +282,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                   <View key={slot} collapsable={false}
                     style={{ position: 'absolute', left: (i % cols) * (size + gap), top: Math.floor(i / cols) * (size + gap), opacity: lifted ? 0.25 : 1 }}>
                     <KeyTile id={slotId} k={k} size={size} width={w * size + (w - 1) * gap} height={h * size + (h - 1) * gap} api={api} state={state}
-                      editing={editing && !drag} picked={false} hover={lifted ? undefined : hover} index={i} feedback={feedback[slotId]} onPress={() => press(slot)}
+                      editing={editing && !drag} picked={false} hover={lifted ? undefined : hover} index={i} feedback={feedback[slotId]}
                       drag={editing && k && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
-                      onLongPress={() => {
-                        const held = k?.hold;
-                        if (!editing) held ? fire(k, held, slotId, `${slotId}:hold`) : setEditing(true);
-                      }} />
+                      onPress={handlers(slot).press} onLongPress={handlers(slot).longPress} onRemove={page.keys[slot] ? handlers(slot).remove : undefined} />
                   </View>
                 );
               })}

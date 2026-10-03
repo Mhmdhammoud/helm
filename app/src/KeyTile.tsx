@@ -97,7 +97,7 @@ export type DragProps = {
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-export function KeyTile({ k, id, size, width, height, api, state, editing, picked, hover, index, feedback, drag, titles = false, onPress, onLongPress }: {
+function KeyTileImpl({ k, id, size, width, height, api, state, editing, picked, hover, index, feedback, drag, titles = false, onPress, onLongPress, onRemove }: {
   k?: Key;
   id: string;
   /** One slot's size; `width`/`height` (default `size`) are the key's own, larger for widgets. */
@@ -118,6 +118,8 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
   drag?: DragProps;
   onPress: () => void;
   onLongPress: () => void;
+  /** Edit mode: the "−" badge, like the iOS home screen. */
+  onRemove?: () => void;
 }) {
   useMinuteTick(k?.live === 'clock');
   const live: LiveView = k ? liveView(k, state, id) : {};
@@ -198,12 +200,15 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
       onPressIn={() => { press.value = withSpring(1, SPRING); }}
       onPressOut={() => { press.value = withSpring(0, SPRING); }}
       accessibilityRole="button"
-      accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}>
+      accessibilityLabel={k ? [live.title ?? k.title, live.sub].filter(Boolean).join(', ') : 'Empty key'}
+      accessibilityActions={editing && k && onRemove ? [{ name: 'remove', label: 'Remove' }] : undefined}
+      onAccessibilityAction={e => e.nativeEvent.actionName === 'remove' && onRemove?.()}>
       <Animated.View style={[{ width: W, height: H }, body]}>
         {/* Plain views, not Skia: a page of keys (and the library's dozens) appears at once instead of canvas by canvas. */}
         {k && appOnly ? null : k ? (
           <>
-            <View style={[StyleSheet.absoluteFill, st.plate, { borderRadius: radius, shadowRadius: size * 0.05, shadowOffset: { width: 0, height: size * 0.04 } },
+            {/* No shadow while jiggling: iOS would re-render every key's shadow offscreen on every frame. */}
+            <View style={[StyleSheet.absoluteFill, { borderRadius: radius }, !editing && [st.plate, { shadowRadius: size * 0.05, shadowOffset: { width: 0, height: size * 0.04 } }],
               lit ? st.faceLit : st.faceDark]} />
             {tint && !lit && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, experimental_backgroundImage: `linear-gradient(135deg, ${tint}66, ${tint}1f)` }]} />}
             {/* bevel: light catches the top edge, the bottom falls away */}
@@ -264,11 +269,39 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
             editing && <Symbol name="plus" size={size * 0.18} weight="light" color={C.dim} />
           )}
         </View>
+        {editing && k && onRemove && (
+          <Pressable onPress={onRemove} hitSlop={10} style={[st.badge, { left: -size * 0.06, top: -size * 0.06 }]}
+            accessibilityRole="button" accessibilityLabel={`Remove ${k.title ?? 'key'}`}>
+            <View style={st.badgeBar} />
+          </Pressable>
+        )}
       </Animated.View>
     </Pressable>
     </GestureDetector>
   );
 }
+
+type TileProps = Parameters<typeof KeyTileImpl>[0];
+
+/** The part of the live state this key shows, so a reading elsewhere changing doesn't redraw it. */
+function shown(k: Key | undefined, state: State | null, id: string) {
+  if (!k) return '';
+  const extra = k.live === 'system' ? [state?.cpu, state?.memory, state?.macBattery]
+    : k.live === 'weather' ? state?.weather
+    : k.live === 'nowplaying' ? state?.nowPlaying
+    : null;
+  return JSON.stringify([k.live ? liveView(k, state, id) : null, extra, state?.mac?.muted, state?.mac?.micMuted]);
+}
+
+// Handlers are ignored: the deck passes stable per-slot ones that always reach its latest render.
+const same = (a: TileProps, b: TileProps) =>
+  a.k === b.k && a.id === b.id && a.size === b.size && a.width === b.width && a.height === b.height && a.api === b.api &&
+  a.editing === b.editing && a.picked === b.picked && a.hover === b.hover && a.index === b.index && a.titles === b.titles &&
+  a.feedback === b.feedback && !!a.drag === !!b.drag && a.drag?.holdMs === b.drag?.holdMs && !!a.onRemove === !!b.onRemove &&
+  shown(a.k, a.state, a.id) === shown(b.k, b.state, b.id);
+
+/** One Stream Deck key (memoised: live updates only redraw the keys whose reading changed). */
+export const KeyTile = React.memo(KeyTileImpl, same);
 
 const st = StyleSheet.create({
   content: { alignItems: 'center', justifyContent: 'center', gap: 2 },
@@ -279,6 +312,9 @@ const st = StyleSheet.create({
   title: { fontWeight: '600', marginTop: 4, letterSpacing: 0.2 },
   sub: { fontWeight: '500', fontVariant: ['tabular-nums'] },
   plate: { shadowColor: '#000', shadowOpacity: 0.65 },
+  badge: { position: 'absolute', width: 26, height: 26, borderRadius: 13, backgroundColor: '#5b5f66', alignItems: 'center', justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.3)' },
+  badgeBar: { width: 11, height: 2.5, borderRadius: 1.25, backgroundColor: '#fff' },
   faceDark: { backgroundColor: '#1a1c20', experimental_backgroundImage: 'linear-gradient(to bottom, #22252a, #121316)' },
   faceLit: { backgroundColor: '#d5d9de', experimental_backgroundImage: 'linear-gradient(to bottom, #f1f3f6, #b9bfc7)' },
   bevel: { borderWidth: 1.2, borderTopColor: 'rgba(255,255,255,0.25)', borderLeftColor: 'rgba(255,255,255,0.1)', borderRightColor: 'rgba(255,255,255,0.1)', borderBottomColor: 'rgba(0,0,0,0.38)' },
