@@ -111,6 +111,24 @@ half4 main(float2 xy) {
 
 const TAU = Math.PI * 2;
 
+// Which mounted backdrop is on top (the most recently mounted one).
+let stack: number[] = [];
+let nextId = 0;
+const listeners = new Set<() => void>();
+function useIsTopBackdrop() {
+  const [id] = React.useState(() => nextId++);
+  const top = React.useSyncExternalStore(
+    cb => { listeners.add(cb); return () => listeners.delete(cb); },
+    () => stack[stack.length - 1] === id,
+  );
+  useEffect(() => {
+    stack = [...stack, id];
+    listeners.forEach(l => l());
+    return () => { stack = stack.filter(x => x !== id); listeners.forEach(l => l()); };
+  }, [id]);
+  return top;
+}
+
 /** Full-screen backdrop: the noise field, blurred, under a scrim so keys stay legible. */
 export function Backdrop({ calm: anc = 0.85, blur = 18 }: { calm?: number; blur?: number }) {
   const { width, height } = useWindowDimensions();
@@ -128,14 +146,22 @@ export function Backdrop({ calm: anc = 0.85, blur = 18 }: { calm?: number; blur?
 
   // Integrate phase on the UI thread: speed follows `calm`, so changing ANC
   // changes the tempo without any jump in the field.
-  useFrameCallback(({ timeSincePreviousFrame }) => {
+  // Helm sits on screen all day, so the field only advances ~20 times a second (it's blurred and slow;
+  // more is invisible) and only the topmost backdrop moves: an open panel freezes the one under it.
+  const acc = useSharedValue(0);
+  const top = useIsTopBackdrop();
+  const frame = useFrameCallback(({ timeSincePreviousFrame }) => {
     'worklet';
-    const dt = Math.min(timeSincePreviousFrame ?? 16, 64) / 1000;
+    acc.value += Math.min(timeSincePreviousFrame ?? 16, 64) / 1000;
+    if (acc.value < 0.05) return;
+    const dt = acc.value;
+    acc.value = 0;
     const chaos = 1 - calm.value;
     a1.value = (a1.value + dt * (0.035 + 0.12 * chaos * chaos)) % TAU;
     a2.value = (a2.value + dt * (0.03 + 0.35 * chaos)) % TAU;
     seed.value = (seed.value + 1) % 64;
-  });
+  }, false);
+  useEffect(() => frame.setActive(top), [top, frame]);
 
   const uniforms = useDerivedValue(() => ({
     res: [width, height],
