@@ -129,6 +129,11 @@ function useIsTopBackdrop() {
   return top;
 }
 
+/** Mount while something opaque covers the screen (the idle clock) to freeze every backdrop under it. */
+export function usePauseBackdrops() {
+  useIsTopBackdrop();
+}
+
 /** Full-screen backdrop: the noise field, blurred, under a scrim so keys stay legible. */
 export function Backdrop({ calm: anc = 0.85, blur = 18 }: { calm?: number; blur?: number }) {
   const { width, height } = useWindowDimensions();

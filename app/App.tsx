@@ -10,11 +10,13 @@ import { DeckScreen } from './src/DeckScreen';
 import { HushPanel } from './src/HushPanel';
 import { Pairing } from './src/Pairing';
 import { Splash } from './src/Splash';
+import { IdleScreen, useIdle } from './src/Idle';
 import type { Deck } from './src/types';
 import { C } from './src/theme';
 
 export default function App() {
   const macs = useMacs();
+  const idle = useIdle();
   const [showMacs, setShowMacs] = useState(false);
   const [panel, setPanel] = useState<'hush' | null>(null);
   const [deck, setDeckState] = useState<Deck | null>(null);
@@ -65,10 +67,11 @@ export default function App() {
   }
 
   return (
-    <View style={st.root}>
+    <View style={st.root} onStartShouldSetResponderCapture={() => { idle.touched(); return false; }}>
       <StatusBar hidden />
       <Backdrop />
       {screen}
+      {idle.idle && <IdleScreen onWake={idle.wake} />}
       <Splash ready={macs.loaded && (!macs.current || !!deck || !!deckError)} />
     </View>
   );
