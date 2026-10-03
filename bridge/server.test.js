@@ -59,6 +59,12 @@ async function start(t, opts = {}) {
   return { ...h, h, call, run, base, token: () => token };
 }
 
+test('the Mission Control shortcut opens Mission Control (macOS ignores a synthetic ctrl-up)', async t => {
+  const { run, calls } = await start(t);
+  await run({ type: 'hotkey', key: 'up', mods: ['ctrl'] });
+  assert.deepEqual(calls.at(-1), ['open', '-a', 'Mission Control']);
+});
+
 test('pairing: the code is posted through Helm Bridge when there is one, AppleScript if that fails', async t => {
   const h = harness();
   let allowed = true;

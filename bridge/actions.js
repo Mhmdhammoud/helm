@@ -154,6 +154,8 @@ export function makeRunner({
   async function run(a, id) {
     switch (a.type) {
       case 'hotkey':
+        // macOS ignores a synthetic ctrl-up, so Mission Control's shortcut opens the app instead.
+        if (String(a.key).toLowerCase() === 'up' && a.mods?.length === 1 && a.mods[0] === 'ctrl') return exec('open', ['-a', 'Mission Control']);
         return as(hotkeyScript(a.key, a.mods), String(a.key ?? ''));
       case 'open': {
         const t = String(a.target ?? '');
