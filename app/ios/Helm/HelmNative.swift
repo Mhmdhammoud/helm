@@ -50,3 +50,33 @@ class HelmNative: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
     resolve(nil)
   }
 }
+
+/// SF Symbol image view for keys. `bounce` replays the symbol's bounce effect whenever it changes.
+@objc(HelmSymbolViewManager)
+class HelmSymbolViewManager: RCTViewManager {
+  override static func requiresMainQueueSetup() -> Bool { true }
+  override func view() -> UIView! { HelmSymbolView() }
+}
+
+class HelmSymbolView: UIImageView {
+  @objc var name: NSString = "" { didSet { update() } }
+  @objc var size: NSNumber = 28 { didSet { update() } }
+  @objc var weight: NSString = "regular" { didSet { update() } }
+  @objc var color: UIColor? { didSet { tintColor = color } }
+  @objc var bounce: NSNumber = 0 {
+    didSet { if bounce != oldValue && bounce.intValue > 0 { addSymbolEffect(.bounce.down, options: .nonRepeating) } }
+  }
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    contentMode = .center
+    tintColor = .white
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  private func update() {
+    let w: UIImage.SymbolWeight = ["light": .light, "medium": .medium, "semibold": .semibold, "bold": .bold][weight as String] ?? .regular
+    let config = UIImage.SymbolConfiguration(pointSize: CGFloat(truncating: size), weight: w)
+    image = UIImage(systemName: name as String, withConfiguration: config) ?? UIImage(systemName: "questionmark.square.dashed", withConfiguration: config)
+  }
+}

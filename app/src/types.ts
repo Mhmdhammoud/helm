@@ -21,7 +21,7 @@ export type ActionType = Action['type'];
 export type Live = 'mic' | 'volume' | 'battery' | 'anc' | 'toggle';
 export type Key = {
   title?: string;
-  icon?: { emoji?: string; app?: string };
+  icon?: { symbol?: string; emoji?: string; app?: string };
   color?: string;
   live?: Live;
   action: Action;

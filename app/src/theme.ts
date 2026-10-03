@@ -8,7 +8,12 @@ export const C = {
   hairline: 'rgba(255,255,255,0.16)',
   silver: '#d9dde3',
   raised: '#15171a',
+  danger: '#e8a0a0',
+  ok: '#9fd8b4',
 };
 
-/** Key background colours offered in the editor (null = default). */
-export const KEY_COLORS = [null, '#1f3b73', '#3b2a5c', '#5c1f1f', '#1f4d3a', '#5c4a1f', '#2b2f36'];
+/** Spring used for every snap in the app (tabs, keys, sheets). */
+export const SPRING = { damping: 30, stiffness: 420, mass: 0.7 };
+
+/** Key tints offered in the editor (null = plain metal). Blended over the key face, never flat. */
+export const KEY_COLORS = [null, '#3f6bd1', '#7d55d6', '#d65548', '#3fa877', '#d6a23f', '#8a96a8'];
