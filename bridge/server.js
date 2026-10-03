@@ -8,7 +8,7 @@
 // Anyone with the token can run scripts on this Mac, as with any Stream Deck: keep it on your own network.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,7 +20,11 @@ import { makeFeatures } from './features.js';
 
 const SUPPORT = process.env.HELM_SUPPORT_DIR || join(homedir(), 'Library/Application Support/Helm');
 const PORT = Number(process.env.HELM_PORT ?? 7733);
-const HUSH_CLI = process.env.HUSH_CLI || join(homedir(), 'Documents/projects/lab/hush/bin/hush');
+// Hush publishes its live state here (sandboxed builds inside their container); the newer file wins.
+const HUSH_STATE = [
+  join(homedir(), 'Library/Application Support/Hush/state.json'),
+  join(homedir(), 'Library/Containers/app.hush.macos/Data/Library/Application Support/Hush/state.json'),
+];
 
 // Paired iPads: sha256(token) → { device, pairedAt }. Tokens themselves are never stored.
 const sha = t => createHash('sha256').update(t).digest('hex');
@@ -85,13 +89,13 @@ function watchVolume(onChange) {
 }
 
 export function serve({
-  port = PORT, exec = realExec, hushCli = HUSH_CLI, supportDir = SUPPORT, name = 'Mac',
+  port = PORT, exec = realExec, hushState = HUSH_STATE, supportDir = SUPPORT, name = 'Mac',
   pollMs = 1000, heartbeatMs = 5000, runWaitMs = 250, watch = true, now = Date.now,
 } = {}) {
   const deckFile = join(supportDir, 'deck.json');
   const tokensFile = join(supportDir, 'tokens.json');
   const id = bridgeId(supportDir);
-  const runner = makeRunner({ exec, hushCli, supportDir });
+  const runner = makeRunner({ exec, supportDir });
   const features = makeFeatures({ exec, supportDir, deckFile });
   const authed = h => /^Bearer .+/.test(h ?? '') && !!loadTokens(tokensFile)[sha(h.slice(7))];
 
@@ -135,9 +139,19 @@ export function serve({
   };
   const send = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
 
-  const headphones = () => existsSync(hushCli)
-    ? exec(hushCli, ['status', '--json'], 15000).then(JSON.parse).catch(e => ({ status: 'unavailable', error: e.message }))
-    : Promise.resolve(null);
+  // Read straight from Hush's state file (no process per poll). null = Hush isn't installed. Whether Hush is
+  // running is checked at most every 10s; if it isn't, the file is stale and the headphones are unknown.
+  let hushUp = { at: 0, up: false };
+  const hushRunning = async () => {
+    if (Date.now() - hushUp.at > 10_000) hushUp = { at: Date.now(), up: !!(await exec('pgrep', ['-x', 'Hush']).catch(() => '')).trim() };
+    return hushUp.up;
+  };
+  const headphones = async () => {
+    const file = hushState.filter(f => existsSync(f)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+    if (!file) return null;
+    if (!(await hushRunning())) return { status: 'unavailable', error: "Hush isn't running" };
+    try { return JSON.parse(readFileSync(file, 'utf8')); } catch (e) { return { status: 'unavailable', error: e.message }; }
+  };
 
   // Live push: each top-level state key (mac, headphones, toggles, live sources) is re-sent only when it changes.
   const clients = new Set();

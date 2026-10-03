@@ -15,8 +15,9 @@ node bridge/server.js              # or run it in the foreground
 ```
 
 Give the bridge's process Accessibility permission (System Settings → Privacy & Security →
-Accessibility) so hotkeys, typed text and media keys work. Hush actions need
-[Hush](../hush) (`HUSH_CLI`, default `~/Documents/projects/lab/hush/bin/hush`).
+Accessibility) so hotkeys, typed text and media keys work. Hush actions and the headphone panel need
+[Hush](https://github.com/Mhmdhammoud/hush) installed and running: the bridge reads its state file and
+sends `hush://` commands to it, nothing else.
 
 ## Pair the iPad
 

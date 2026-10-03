@@ -21,7 +21,7 @@ function harness() {
     if (cmd === '/bin/zsh' && args[1] === 'sleep forever') return new Promise(() => {});
     if (cmd === 'osascript' && script.startsWith('input volume')) return '60';
     if (cmd === '/bin/zsh' && args[1]?.startsWith('lsappinfo')) return '"LSDisplayName"="zoom.us"';
-    if (args[0] === 'status') return JSON.stringify({ status: 'connected', battery: 30, anc: { level: 7 } });
+    if (cmd === 'pgrep') return '4242';
     if (cmd === 'shortcuts') return 'Morning\nFocus';
     if (cmd === 'ps') return 'launchd\n   Spotify\nzsh';
     if (cmd === 'osascript' && script.startsWith('tell application "Spotify"')) return 'paused\tSong\tBand\tspotify:track:1\thttps://i.scdn.co/image/x';
@@ -33,9 +33,9 @@ function harness() {
     return '';
   };
   const dir = mkdtempSync(join(tmpdir(), 'helm-'));
-  const hushCli = join(dir, 'hush');
-  writeFileSync(hushCli, '');
-  const h = { calls, exec, dir, hushCli, volume: 44 };
+  const hushState = join(dir, 'hush-state.json');
+  writeFileSync(hushState, JSON.stringify({ status: 'connected', battery: 30, anc: { level: 7 } }));
+  const h = { calls, exec, dir, hushState, volume: 44 };
   return h;
 }
 
@@ -43,7 +43,7 @@ async function start(t, opts = {}) {
   const h = harness();
   // Each clock read moves 6s on, so back-to-back pairing starts in a test aren't throttled.
   let clock = Date.now();
-  const server = await serve({ port: 0, exec: h.exec, hushCli: h.hushCli, supportDir: h.dir, name: 'Mac mini', watch: false, now: () => (clock += 6000), ...opts });
+  const server = await serve({ port: 0, exec: h.exec, hushState: [h.hushState], supportDir: h.dir, name: 'Mac mini', watch: false, now: () => (clock += 6000), ...opts });
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
   let token = '';
@@ -146,7 +146,7 @@ test('runs each action type as the right command', async t => {
   assert.match(last()[2], /set volume input volume 0/);
 
   await run({ type: 'hush', cmd: 'anc/10' });
-  assert.deepEqual(last().slice(1), ['anc', '10']);
+  assert.deepEqual(last(), ['open', '-g', '-b', 'app.hush.macos', 'hush://anc/10']);
   assert.equal((await run({ type: 'hush', cmd: 'anc/99' })).status, 400);
   assert.equal((await run({ type: 'system', what: 'reboot' })).status, 400);
 
@@ -158,14 +158,14 @@ test('runs each action type as the right command', async t => {
 test('multi runs steps in order; toggle alternates per key', async t => {
   const { run, calls } = await start(t);
   await run({ type: 'multi', delayMs: 1, steps: [{ type: 'open', target: 'Notes' }, { type: 'hush', cmd: 'anc/0' }] });
-  assert.deepEqual(calls.slice(-2).map(c => c.slice(-1)[0]), ['Notes', '0']);
+  assert.deepEqual(calls.slice(-2).map(c => c.slice(-1)[0]), ['Notes', 'hush://anc/0']);
 
   const toggle = { type: 'toggle', on: { type: 'hush', cmd: 'anc/10' }, off: { type: 'hush', cmd: 'anc/5' } };
   let r = await run(toggle, 'zoom/6');
-  assert.equal(calls.at(-1).at(-1), '10');
+  assert.equal(calls.at(-1).at(-1), 'hush://anc/10');
   assert.equal(r.body.toggles['zoom/6'], true);
   r = await run(toggle, 'zoom/6');
-  assert.equal(calls.at(-1).at(-1), '5');
+  assert.equal(calls.at(-1).at(-1), 'hush://anc/5');
   assert.equal(r.body.toggles['zoom/6'], false);
 });
 
@@ -333,7 +333,7 @@ test('volume uses the real volume keys (HUD), latest-wins, osascript fallback', 
     return '';
   };
   const keys = () => calls.filter(c => c[0].endsWith('bin/mediakey3')).map(c => c[1]);
-  const r = makeRunner({ exec, hushCli: '/x', supportDir: dir });
+  const r = makeRunner({ exec, supportDir: dir });
 
   await r.run({ type: 'volume', change: -6 }, 'k');
   await r.run({ type: 'volume', mute: 'toggle' }, 'k');
@@ -371,7 +371,7 @@ test('volume uses the real volume keys (HUD), latest-wins, osascript fallback', 
   const dir2 = mkdtempSync(join(tmpdir(), 'helm-'));
   failCompile = true;
   calls.length = 0;
-  const r2 = makeRunner({ exec, hushCli: '/x', supportDir: dir2 });
+  const r2 = makeRunner({ exec, supportDir: dir2 });
   await r2.run({ type: 'volume', change: 6 }, 'k');
   assert.match(calls.at(-1)[2], /\+ 6\)$/, 'no helper: osascript as before');
   await r2.run({ type: 'volume', mute: 'toggle' }, 'k');

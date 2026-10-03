@@ -63,7 +63,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // AppleScript goes through one long-lived osascript (runner.js) on the real Mac; an injected `exec` (tests)
 // sees it as plain `osascript -e script args…` calls, as does anyone passing their own `osa`.
 export function makeRunner({
-  exec = realExec, hushCli, supportDir,
+  exec = realExec, supportDir,
   osa = exec === realExec ? makeOsa({ exec }) : (script, args) => exec('osascript', ['-e', script, ...args]),
 }) {
   const as = (script, ...args) => osa(script, args);
@@ -183,7 +183,8 @@ export function makeRunner({
       case 'hush': {
         const args = parseHush(a.cmd);
         if (!args) throw new BadRequest(`hush command not allowed: ${a.cmd}`);
-        return exec(hushCli, args);
+        // Same hush:// commands the Hush CLI and Shortcuts use, delivered to the installed app.
+        return exec('open', ['-g', '-b', 'app.hush.macos', `hush://${args.join('/')}`]);
       }
       case 'multi':
         for (const [i, step] of a.steps.entries()) {
