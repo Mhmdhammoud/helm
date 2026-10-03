@@ -30,10 +30,11 @@ as with any Stream Deck, so pair only your own devices.
 
 ## Use
 
-- **Keys**: tap to run; the key flashes when the Mac has done it.
+- **Keys**: tap to run; the key flashes when the Mac has done it. Keys show their icon only (app keys
+  are the app icon edge to edge) plus any live reading.
 - **Edit**: a library opens beside the keys (below them in portrait) with your open apps first,
   then common apps, media, Mac, headphones, meetings, live keys and your macOS Shortcuts; search
-  finds the rest. Tap an item to fill the next empty slot, or hold and drag it onto any slot.
+  finds the rest. Hold an item briefly and drag it onto a slot.
   Hold and drag a key to move it (dropping on another key swaps them) or onto the library to remove
   it. Tap a key to open its editor: what it does, what it does when held, icon (Lucide + Helm's own
   set, the app's icon, or an emoji), tint and live status, with a live preview and "Try it on the Mac".
@@ -43,11 +44,16 @@ as with any Stream Deck, so pair only your own devices.
   steps (with a delay), on/off (alternates two actions).
 - **Live keys**: mic, volume, headphone battery, noise cancelling, toggle state, now playing (Music
   or Spotify: artwork, title, artist; only asked while the app is already running), clock, CPU, memory,
-  Mac battery ("AC" on Macs without one). Mac readings are taken only while an iPad is watching.
+  Mac battery ("AC" on Macs without one), weather. Mac readings are taken only while an iPad is watching.
+- **Widgets**: clock, weather, system (CPU, memory, battery) and now playing can span 2×1 up to 3×2
+  slots (Widgets in the library, or Size in the editor). Weather comes from Open-Meteo (free, no key;
+  the bridge sends it the city name and then its coordinates) for the key's city or, by default, the
+  Mac's time-zone city, refreshed every 15 minutes.
 - **Hold**: a key can have a second action that runs when held for half a second (outside Edit).
 - **Pages and profiles**: hold a page tab (in Edit) to rename, delete, bind it to an app, or make it
   show the Mac's open apps. A bound page (⚡︎) opens while that app is in front on the Mac.
-- **Dials and fader**: Mac volume and noise cancelling as dials, brightness as a DJ-style fader
+- **Dials and fader**: turn by touch, mouse wheel or trackpad; double-tap the volume dial to mute.
+  Mac volume and noise cancelling as dials, brightness as a DJ-style fader
   (`"dials": ["volume", "anc", "brightness"]`). Brightness keys reach built-in and Apple displays
   only; macOS can't dim third-party monitors.
 - **Focus / Do Not Disturb**: make a Shortcut named "Toggle Focus" (Shortcuts app → Set Focus → Do
