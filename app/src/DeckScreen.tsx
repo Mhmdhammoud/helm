@@ -286,8 +286,14 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                     format={v => String(v * 5)} onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
                 )}
                 {dials.includes('anc') && state?.headphones && (
-                  <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180} label="NOISE"
-                    onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
+                  // Headphones off: show it dimmed and inert rather than a misleading "0".
+                  <View style={state.headphones.status !== 'connected' && st.inert}
+                    pointerEvents={state.headphones.status === 'connected' ? 'auto' : 'none'}>
+                    <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180}
+                      label={state.headphones.status === 'connected' ? 'NOISE' : 'OFF'}
+                      format={state.headphones.status === 'connected' ? undefined : () => '–'}
+                      onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
+                  </View>
                 )}
               </View>
             )}
@@ -402,6 +408,7 @@ const st = StyleSheet.create({
   toolsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: -10, marginBottom: 12 },
   libraryPortrait: { width: '100%', height: 360 },
   lifted: { opacity: 0.25 },
+  inert: { opacity: 0.3 },
   floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
   status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },
 });
