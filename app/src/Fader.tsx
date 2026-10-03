@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
 import { Canvas, Group, LinearGradient, Path, RoundedRect, Shadow, Skia, vec } from 'react-native-skia';
 import { C, SPRING } from './theme';
@@ -33,9 +34,10 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
   useEffect(() => {
     if (value == null || Date.now() < r.current.busyUntil) return;
     r.current.step = value;
+    stepSV.value = value;
     setStep(value);
     pos.value = withSpring(value, SPRING);
-  }, [value, pos]);
+  }, [value, pos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // At most one step command per 60ms; queued deltas are summed so nothing is lost.
   const queued = useRef(0);
@@ -53,26 +55,33 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
     flush();
   };
 
+  // The pan runs on the UI thread and moves the cap itself; JS only hears about whole steps.
+  const stepSV = useSharedValue(step);
+  const from = useSharedValue(0);
+  const busy = () => { r.current.busyUntil = Date.now() + 1500; };
+  const stepped = (d: number, s: number) => { busy(); r.current.step = s; setStep(s); send(d); };
   const pan = usePanGesture({
     minDistance: 0,
     enableTrackpadTwoFingerGesture: true, // mouse wheel and trackpad scrolling move it too
-    runOnJS: true,
-    onBegin: () => { r.current.from = r.current.step; },
+    onBegin: () => {
+      'worklet';
+      from.value = stepSV.value;
+      scheduleOnRN(busy);
+    },
     onUpdate: e => {
-      const { steps: n } = r.current;
-      const v = Math.min(n, Math.max(0, r.current.from - (e.translationY / travel) * n));
+      'worklet';
+      const v = Math.min(steps, Math.max(0, from.value - (e.translationY / travel) * steps));
       pos.value = v;
-      r.current.busyUntil = Date.now() + 1500;
       const s = Math.round(v);
-      if (s !== r.current.step) {
-        send(s - r.current.step);
-        r.current.step = s;
-        setStep(s);
+      if (s !== stepSV.value) {
+        scheduleOnRN(stepped, s - stepSV.value, s);
+        stepSV.value = s;
       }
     },
     onFinalize: () => {
-      pos.value = withSpring(r.current.step, SPRING);
-      r.current.busyUntil = Date.now() + 1500;
+      'worklet';
+      pos.value = withSpring(stepSV.value, SPRING);
+      scheduleOnRN(busy);
     },
   });
 
@@ -103,6 +112,7 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
           if (s === r.current.step) return;
           send(d);
           r.current.step = s;
+          stepSV.value = s;
           setStep(s);
           pos.value = withSpring(s, SPRING);
         }}>

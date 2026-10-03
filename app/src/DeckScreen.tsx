@@ -37,11 +37,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
   // Dragging a key (from the grid or the library): it follows the finger and drops on a slot.
   const [drag, setDrag] = useState<{ k: Key; from?: string } | null>(null);
-  const [hover, setHover] = useState<string | null>(null);
   const dragRef = useRef(drag);
   dragRef.current = drag;
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
+  // The slot under a dragged key (-1: none) and where the root and grid sit, all read on the UI thread.
+  const hover = useSharedValue(-1);
+  const org = useSharedValue({ rx: 0, ry: 0, gx: 0, gy: 0 });
   const rootRef = useRef<View>(null);
   const gridRef = useRef<View>(null);
   const origin = useRef({ root: { x: 0, y: 0 }, grid: { x: 0, y: 0 } });
@@ -79,8 +81,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   };
 
   const startDrag = (k: Key, from?: string) => {
-    rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; });
-    gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; });
+    rootRef.current?.measureInWindow((x, y) => { origin.current.root = { x, y }; org.value = { ...org.value, rx: x, ry: y }; });
+    gridRef.current?.measureInWindow((x, y) => { origin.current.grid = { x, y }; org.value = { ...org.value, gx: x, gy: y }; });
     dragRef.current = { k, from }; // a hold released at once ends before the next render
     setDrag({ k, from });
   };
@@ -93,7 +95,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const drop = (slot: string | null, px = 0, py = 0) => {
     const d = dragRef.current;
     setDrag(null);
-    setHover(null);
+    hover.value = -1;
     // A grid key dropped on the library panel (right of the grid) is removed.
     // (Right of the grid in landscape, below it in portrait.)
     if (d?.from != null && slot == null && (px > origin.current.grid.x + cols * (size + gap) || py > origin.current.grid.y + rows * (size + gap))) {
@@ -108,21 +110,26 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     flashKey(`${page.id}/${slot}`, true);
   };
   // Gesture handlers for a draggable key (a grid key in edit mode, or a library key when `from` is unset).
+  // Follows the finger on the UI thread: moves the floating key and marks the slot under it.
+  const moveDrag = (x: number, y: number) => {
+    'worklet';
+    const o = org.value;
+    const cell = size + gap;
+    dx.value = x - o.rx;
+    dy.value = y - o.ry;
+    const c = Math.floor((x - o.gx) / cell), r = Math.floor((y - o.gy) / cell);
+    hover.value = c >= 0 && c < cols && r >= 0 && r < rows ? r * cols + c : -1;
+  };
   const dragProps = (k: Key, from?: string, holdMs = 300): DragProps => ({
     holdMs,
-    onStart: (x, y) => { startDrag(k, from); moveDrag(x, y); },
-    onMove: moveDrag,
+    move: moveDrag,
+    onStart: () => startDrag(k, from),
     onEnd: (x, y, canceled) => {
       if (!canceled) return drop(slotAt(x, y), x, y);
       setDrag(null);
-      setHover(null);
+      hover.value = -1;
     },
   });
-  const moveDrag = (x: number, y: number) => {
-    dx.value = x - origin.current.root.x;
-    dy.value = y - origin.current.root.y;
-    setHover(slotAt(x, y));
-  };
 
   const press = (slot: string) => {
     const k = keys[slot];
@@ -256,7 +263,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
                   <View key={slot} collapsable={false}
                     style={{ position: 'absolute', left: (i % cols) * (size + gap), top: Math.floor(i / cols) * (size + gap), opacity: lifted ? 0.25 : 1 }}>
                     <KeyTile id={slotId} k={k} size={size} width={w * size + (w - 1) * gap} height={h * size + (h - 1) * gap} api={api} state={state}
-                      editing={editing && !drag} picked={hover === slot && !lifted} feedback={feedback[slotId]} onPress={() => press(slot)}
+                      editing={editing && !drag} picked={false} hover={lifted ? undefined : hover} index={i} feedback={feedback[slotId]} onPress={() => press(slot)}
                       drag={editing && k && page.keys[slot] ? dragProps(page.keys[slot], slot) : undefined}
                       onLongPress={() => {
                         const held = k?.hold;

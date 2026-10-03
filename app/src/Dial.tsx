@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture, useSimultaneousGestures, useTapGesture } from 'react-native-gesture-handler';
 import { useDerivedValue, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { Canvas, Circle, Group, LinearGradient, Path, RadialGradient, Shadow, Skia, SweepGradient, vec } from 'react-native-skia';
 import { C } from './theme';
 import { START, SWEEP, angleAt, clamp, turn } from './dialMath';
@@ -33,8 +34,6 @@ const SEND_MS = 80; // at most one onChange per 80ms
  * Double-tap centres a bipolar dial.
  */
 export function Dial({ value, min, max, size, label, onChange, bipolar, format = String, onDoubleTap }: Props) {
-  const doubleTap = useRef(onDoubleTap);
-  doubleTap.current = onDoubleTap;
   const range = max - min;
   const [step, setStep] = useState(value);
   const pos = useSharedValue(value); // continuous position, drives the drawing on the UI thread
@@ -45,16 +44,23 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   const ringR = c - Math.max(5, size * 0.035);
   const bodyR = c * 0.68;
 
-  const live = useRef({ step, cur: value, value, min, max, range, onChange, bodyR, c, size });
-  Object.assign(live.current, { value, min, max, range, onChange, bodyR, c, size });
-
-  // Device echoes are ignored while touched and until SETTLE_MS after release, then we resync.
+  // JS side: what the parent passed most recently, and whether the device's echoes should be ignored.
+  const live = useRef({ value, onChange, onDoubleTap });
+  Object.assign(live.current, { value, onChange, onDoubleTap });
   const touching = useRef(false);
   const busyUntil = useRef(0);
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // UI side: the gesture runs as worklets and moves these directly; React only hears about whole steps.
+  const cur = useSharedValue(value); // continuous position under the finger
+  const stepSV = useSharedValue(value);
+  const g = useSharedValue({ mode: 0, cx: 0, cy: 0, x0: 0, y0: 0, lastAngle: 0, lastDx: 0, lastDy: 0 }); // mode 0 = turn, 1 = slide
+
+  // Device echoes are ignored while touched and until SETTLE_MS after release, then we resync.
   const sync = () => {
     const v = live.current.value;
-    live.current.step = live.current.cur = v;
+    cur.value = v;
+    stepSV.value = v;
     setStep(v);
     pos.value = withSpring(v, DETENT);
   };
@@ -79,82 +85,77 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
   };
   useEffect(() => () => { timer.current && clearTimeout(timer.current); settle.current && clearTimeout(settle.current); }, []);
 
-  /** Set the continuous position; a whole-step crossing is a detent. */
-  const moveTo = (v: number, animate: boolean) => {
-    const L = live.current;
-    L.cur = clamp(v, L.min, L.max);
-    const n = Math.round(L.cur);
-    pos.value = animate ? withSpring(n, DETENT) : L.cur;
-    if (n !== L.step) {
-      L.step = n;
-      setStep(n);
-      pulse.value = withSequence(withTiming(1, { duration: 40 }), withTiming(0, { duration: 260 }));
-      commit(n);
-    }
-  };
-  const release = () => {
+  const onStep = (n: number) => { setStep(n); commit(n); };
+  const touched = () => { touching.current = true; settle.current && clearTimeout(settle.current); };
+  const released = () => {
     touching.current = false;
     busyUntil.current = Date.now() + SETTLE_MS;
     settle.current && clearTimeout(settle.current);
     settle.current = setTimeout(sync, SETTLE_MS);
   };
-  const act = useRef({ moveTo, release });
-  act.current = { moveTo, release };
+  const doubleTapped = () => live.current.onDoubleTap?.();
 
-  // Per-touch tracking for the pan below.
-  const t = useRef({ mode: 'turn' as 'turn' | 'slide', cx: 0, cy: 0, x0: 0, y0: 0, lastAngle: 0, lastDx: 0, lastDy: 0 });
-  const bipolarRef = useRef(bipolar);
-  bipolarRef.current = bipolar;
+  /** Set the continuous position; a whole-step crossing is a detent (a pulse here, a message to JS). */
+  const moveTo = (v: number, animate: boolean) => {
+    'worklet';
+    cur.value = clamp(v, min, max);
+    const n = Math.round(cur.value);
+    pos.value = animate ? withSpring(n, DETENT) : cur.value;
+    if (n !== stepSV.value) {
+      stepSV.value = n;
+      pulse.value = withSequence(withTiming(1, { duration: 40 }), withTiming(0, { duration: 260 }));
+      scheduleOnRN(onStep, n);
+    }
+  };
+
   const pan = usePanGesture({
     minDistance: 0,
     enableTrackpadTwoFingerGesture: true, // mouse wheel and trackpad scrolling turn it too
-    runOnJS: true,
     onBegin: e => {
-      const L = live.current;
-      const g = t.current;
-      touching.current = true;
-      settle.current && clearTimeout(settle.current);
-      g.cx = e.absoluteX - e.x + L.c;
-      g.cy = e.absoluteY - e.y + L.c;
-      g.mode = Math.hypot(e.x - L.c, e.y - L.c) > L.bodyR * 0.85 ? 'turn' : 'slide';
-      g.lastAngle = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);
-      g.x0 = e.absoluteX;
-      g.y0 = e.absoluteY;
-      g.lastDx = g.lastDy = 0;
+      'worklet';
+      const cx = e.absoluteX - e.x + c, cy = e.absoluteY - e.y + c;
+      g.value = {
+        mode: Math.hypot(e.x - c, e.y - c) > bodyR * 0.85 ? 0 : 1,
+        cx, cy, x0: e.absoluteX, y0: e.absoluteY,
+        lastAngle: angleAt(e.absoluteX, e.absoluteY, cx, cy), lastDx: 0, lastDy: 0,
+      };
+      scheduleOnRN(touched);
     },
     onUpdate: e => {
-      const L = live.current;
-      const g = t.current;
+      'worklet';
+      const t = { ...g.value };
       // A scroll moves the gesture but not the pointer, so there's no angle to follow: slide instead.
-      if (g.mode === 'turn' && Math.hypot(e.absoluteX - g.x0, e.absoluteY - g.y0) < 1 && Math.hypot(e.translationX, e.translationY) > 2) g.mode = 'slide';
+      if (t.mode === 0 && Math.hypot(e.absoluteX - t.x0, e.absoluteY - t.y0) < 1 && Math.hypot(e.translationX, e.translationY) > 2) t.mode = 1;
       let delta: number;
-      if (g.mode === 'turn') {
-        const a = angleAt(e.absoluteX, e.absoluteY, g.cx, g.cy);
+      if (t.mode === 0) {
+        const a = angleAt(e.absoluteX, e.absoluteY, t.cx, t.cy);
         // Right at the centre the angle is noise; just track it without moving.
-        delta = Math.hypot(e.absoluteX - g.cx, e.absoluteY - g.cy) < L.c * 0.2 ? 0 : (turn(g.lastAngle, a) / SWEEP) * L.range;
-        g.lastAngle = a;
+        delta = Math.hypot(e.absoluteX - t.cx, e.absoluteY - t.cy) < c * 0.2 ? 0 : (turn(t.lastAngle, a) / SWEEP) * range;
+        t.lastAngle = a;
       } else {
         // Up or right increases; a long, calm throw for the whole range.
-        delta = ((e.translationX - g.lastDx - (e.translationY - g.lastDy)) / Math.max(240, L.size * 1.5)) * L.range;
+        delta = ((e.translationX - t.lastDx - (e.translationY - t.lastDy)) / Math.max(240, size * 1.5)) * range;
       }
-      g.lastDx = e.translationX;
-      g.lastDy = e.translationY;
-      if (delta) act.current.moveTo(L.cur + delta, false);
+      t.lastDx = e.translationX;
+      t.lastDy = e.translationY;
+      g.value = t;
+      if (delta) moveTo(cur.value + delta, false);
     },
     onFinalize: () => {
-      act.current.moveTo(live.current.step, true);
-      act.current.release();
+      'worklet';
+      moveTo(stepSV.value, true);
+      scheduleOnRN(released);
     },
   });
   // Recognised alongside the pan, so the knob still turns from the first touch.
+  const hasDoubleTap = !!onDoubleTap;
   const twoTaps = useTapGesture({
     numberOfTaps: 2,
-    enabled: !!onDoubleTap || !!bipolar,
-    runOnJS: true,
+    enabled: hasDoubleTap || !!bipolar,
     onActivate: () => {
-      const L = live.current;
-      if (doubleTap.current) doubleTap.current();
-      else if (bipolarRef.current) { act.current.moveTo((L.min + L.max) / 2, true); act.current.release(); }
+      'worklet';
+      if (hasDoubleTap) scheduleOnRN(doubleTapped);
+      else if (bipolar) { moveTo((min + max) / 2, true); scheduleOnRN(released); }
     },
   });
   const gesture = useSimultaneousGestures(pan, twoTaps);
@@ -224,7 +225,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
       onAccessibilityAction={e => {
         if (e.nativeEvent.actionName === 'activate') return onDoubleTap?.();
         moveTo(step + (e.nativeEvent.actionName === 'increment' ? 1 : -1), true);
-        release();
+        released();
       }}>
       <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
         {/* ring: track, tick scale, glowing silver value arc */}

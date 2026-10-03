@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -10,6 +11,7 @@ import Animated, {
   withSequence,
   withSpring,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import type { Client } from './api';
 import { Symbol, defaultSymbol } from './Symbol';
@@ -84,8 +86,9 @@ function useMinuteTick(on: boolean) {
 /** Hold-then-drag: the pan activates after `holdMs` without moving, so quick swipes still scroll the library. */
 export type DragProps = {
   holdMs: number;
+  /** A worklet: runs on the UI thread for every movement, so dragging never waits on React. */
+  move: (x: number, y: number) => void;
   onStart: (x: number, y: number) => void;
-  onMove: (x: number, y: number) => void;
   /** `canceled`: the system took the touch away; put the key back. */
   onEnd: (x: number, y: number, canceled: boolean) => void;
 };
@@ -94,7 +97,7 @@ export type DragProps = {
 export type Feedback = { n: number; ok: boolean };
 
 /** One Stream Deck key: a machined face with a glyph, live status, press physics and a run flash. */
-export function KeyTile({ k, id, size, width, height, api, state, editing, picked, feedback, drag, titles = false, onPress, onLongPress }: {
+export function KeyTile({ k, id, size, width, height, api, state, editing, picked, hover, index, feedback, drag, titles = false, onPress, onLongPress }: {
   k?: Key;
   id: string;
   /** One slot's size; `width`/`height` (default `size`) are the key's own, larger for widgets. */
@@ -105,6 +108,9 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
   state: State | null;
   editing: boolean;
   picked: boolean;
+  /** Lit while a dragged key is over slot `index` (a shared value, so it updates without re-rendering). */
+  hover?: SharedValue<number>;
+  index?: number;
   feedback?: Feedback;
   /** Show key names (the library); deck keys are icons plus any live reading. */
   titles?: boolean;
@@ -146,20 +152,35 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
     flash.value = withSequence(withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) }), withTiming(0, { duration: 600 }));
   }, [feedback?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const body = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - press.value * 0.06 + (picked ? 0.04 : 0) }, { rotateZ: `${wiggle.value * 1.4}deg` }],
-  }));
+  const body = useAnimatedStyle(() => {
+    const over = picked || (hover != null && hover.value === index);
+    return { transform: [{ scale: 1 - press.value * 0.06 + (over ? 0.04 : 0) }, { rotateZ: `${wiggle.value * 1.4}deg` }] };
+  });
+  const overRing = useAnimatedStyle(() => ({ opacity: picked || (hover != null && hover.value === index) ? 1 : 0 }));
   const ring = useAnimatedStyle(() => ({ opacity: flash.value }));
 
   const dragRef = useRef(drag);
   dragRef.current = drag;
+  // Pick-up and drop go to React; every movement in between stays on the UI thread.
+  const start = (x: number, y: number) => dragRef.current?.onStart(x, y);
+  const end = (x: number, y: number, canceled: boolean) => dragRef.current?.onEnd(x, y, canceled);
+  const move = drag?.move;
   const pan = usePanGesture({
     enabled: !!drag,
     activateAfterLongPress: drag?.holdMs ?? 300,
-    runOnJS: true,
-    onActivate: e => dragRef.current?.onStart(e.absoluteX, e.absoluteY),
-    onUpdate: e => dragRef.current?.onMove(e.absoluteX, e.absoluteY),
-    onDeactivate: e => dragRef.current?.onEnd(e.absoluteX, e.absoluteY, e.canceled),
+    onActivate: e => {
+      'worklet';
+      move?.(e.absoluteX, e.absoluteY);
+      scheduleOnRN(start, e.absoluteX, e.absoluteY);
+    },
+    onUpdate: e => {
+      'worklet';
+      move?.(e.absoluteX, e.absoluteY);
+    },
+    onDeactivate: e => {
+      'worklet';
+      scheduleOnRN(end, e.absoluteX, e.absoluteY, e.canceled);
+    },
   });
 
   const lit = live.on;
@@ -198,7 +219,7 @@ export function KeyTile({ k, id, size, width, height, api, state, editing, picke
           // Outside edit mode an empty slot is just a faint well; the dashed "drop here" outline is for editing.
           <View style={[StyleSheet.absoluteFill, { borderRadius: radius }, editing ? st.emptyEdit : st.empty]} />
         )}
-        {picked && <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 3, borderColor: C.silver }]} />}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 3, borderColor: C.silver }, overRing]} />
 
         {live.art && !widget && (
           <View style={[st.art, { width: W - 4, height: H - 4, borderRadius: radius - 1 }]} pointerEvents="none">

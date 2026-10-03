@@ -1,6 +1,7 @@
 jest.mock('react-native-skia', () => ({}));
 jest.mock('react-native-reanimated', () => ({}));
 jest.mock('react-native-gesture-handler', () => ({}));
+jest.mock('react-native-worklets', () => ({}));
 jest.mock('../src/Symbol', () => ({}));
 import { liveView } from '../src/KeyTile';
 import type { Key, State } from '../src/types';
