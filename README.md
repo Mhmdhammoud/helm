@@ -14,8 +14,10 @@ node bridge/server.js --install    # runs at login (LaunchAgent); --uninstall re
 node bridge/server.js              # or run it in the foreground
 ```
 
-Give the bridge's process Accessibility permission (System Settings → Privacy & Security →
-Accessibility) so hotkeys, typed text and media keys work. Hush actions and the headphone panel need
+The login item runs through a small "Helm Bridge" app, so macOS asks for permissions under that name
+(not `node`): allow its Documents access if the repo lives there, and turn on Helm Bridge in System
+Settings → Privacy & Security → Accessibility so hotkeys, typed text and media keys work. In the
+foreground, the permission belongs to your terminal instead. Hush actions and the headphone panel need
 [Hush](https://github.com/Mhmdhammoud/hush) installed and running: the bridge reads its state file and
 sends `hush://` commands to it, nothing else.
 

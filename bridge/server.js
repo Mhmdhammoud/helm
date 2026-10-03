@@ -8,7 +8,7 @@
 // Anyone with the token can run scripts on this Mac, as with any Stream Deck: keep it on your own network.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -284,20 +284,51 @@ export function serve({
 
 const LAUNCH_AGENT = join(homedir(), 'Library/LaunchAgents/app.helm.bridge.plist');
 
+// Built once and kept: rebuilding changes its signature, and macOS would forget the Accessibility grant.
+async function launcherApp() {
+  const app = join(SUPPORT, 'Helm Bridge.app');
+  const bin = join(app, 'Contents/MacOS/helm-bridge');
+  if (existsSync(bin)) return bin;
+  mkdirSync(dirname(bin), { recursive: true });
+  writeFileSync(join(app, 'Contents/Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>app.helm.bridge</string>
+  <key>CFBundleName</key><string>Helm Bridge</string>
+  <key>CFBundleExecutable</key><string>helm-bridge</string>
+  <key>CFBundleIconFile</key><string>HelmBridge</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+`);
+  mkdirSync(join(app, 'Contents/Resources'), { recursive: true });
+  copyFileSync(fileURLToPath(new URL('./HelmBridge.icns', import.meta.url)), join(app, 'Contents/Resources/HelmBridge.icns'));
+  await realExec('swiftc', ['-O', fileURLToPath(new URL('./launcher.swift', import.meta.url)), '-o', bin], 120000);
+  await realExec('codesign', ['--force', '--sign', '-', '--identifier', 'app.helm.bridge', app]);
+  return bin;
+}
+
 async function install() {
   mkdirSync(dirname(LAUNCH_AGENT), { recursive: true });
   const log = join(SUPPORT, 'bridge.log');
+  const launcher = await launcherApp();
   writeFileSync(LAUNCH_AGENT, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>app.helm.bridge</string>
-  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${fileURLToPath(import.meta.url)}</string></array>
+  <key>AssociatedBundleIdentifiers</key><string>app.helm.bridge</string>
+  <key>ProgramArguments</key><array><string>${launcher}</string><string>${process.execPath}</string><string>${fileURLToPath(import.meta.url)}</string></array>
   <key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${log}</string><key>StandardErrorPath</key><string>${log}</string>
 </dict></plist>
 `);
   await uninstall(true);
+  // bootout returns before the old job is gone, and bootstrapping over it fails with an I/O error.
+  for (let i = 0; i < 50; i++) {
+    if (!(await realExec('launchctl', ['print', `gui/${process.getuid()}/app.helm.bridge`]).then(() => true, () => false))) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
   await realExec('launchctl', ['bootstrap', `gui/${process.getuid()}`, LAUNCH_AGENT]);
   console.log(`Helm bridge installed; it starts at login. Log: ${log}`);
 }
