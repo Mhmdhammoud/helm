@@ -125,7 +125,7 @@ export function Fader({ value, steps = 16, height = 300, width = 84, label, form
           </Group>
         </Canvas>
       </View>
-      <Text style={st.value}>{format ? format(step) : step}</Text>
+      {(format ? format(step) : String(step)) !== '' && <Text style={st.value}>{format ? format(step) : step}</Text>}
       <Text style={st.label}>{label}</Text>
     </View>
   );

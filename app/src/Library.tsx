@@ -89,6 +89,10 @@ export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
   const [shortcuts, setShortcuts] = useState<string[]>([]);
   const [running, setRunning] = useState<string[]>([]);
   const [q, setQ] = useState('');
+  const [w, setW] = useState(300);
+  const wide = w > 500; // portrait: the library spans the screen under the grid
+  const cols = wide ? 7 : 3;
+  const tile = Math.floor((w - 28 - 10 * (cols - 1)) / cols);
   useEffect(() => {
     api.apps().then(setApps, () => {});
     api.shortcuts().then(setShortcuts, () => {});
@@ -112,7 +116,7 @@ export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
   }, [apps, shortcuts, running, query]);
 
   return (
-    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={[st.panel, style]}>
+    <Animated.View entering={FadeInRight.duration(220)} exiting={FadeOutRight.duration(160)} style={[st.panel, style]} onLayout={e => setW(e.nativeEvent.layout.width)}>
       <View style={st.search}>
         <Symbol name="magnifyingglass" size={14} color={C.dim} />
         <TextInput value={q} onChangeText={setQ} placeholder="Apps, actions, shortcuts" placeholderTextColor={C.dim}
@@ -124,7 +128,7 @@ export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
             <Text style={st.title}>{s.title.toUpperCase()}</Text>
             <View style={st.grid}>
               {s.keys.map((key, i) => (
-                <KeyTile key={`${s.title}${i}`} id={`lib/${s.title}/${i}`} k={key} size={76} api={api} state={state}
+                <KeyTile key={`${s.title}${i}`} id={`lib/${s.title}/${i}`} k={key} size={tile} api={api} state={state}
                   editing={false} picked={false} onPress={() => onAdd(key)} onLongPress={() => onDragStart(key)} />
               ))}
             </View>
@@ -132,7 +136,7 @@ export function Library({ api, state, dragging, style, onAdd, onDragStart }: {
         ))}
         {!sections.length && <Text style={st.empty}>Nothing matches “{q}”.</Text>}
       </ScrollView>
-      <Text style={st.hint}>Tap to add · hold and drag onto a slot</Text>
+      {!wide && <Text style={st.hint}>Tap to add · hold and drag onto a slot</Text>}
     </Animated.View>
   );
 }

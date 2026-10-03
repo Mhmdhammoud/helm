@@ -51,7 +51,7 @@ export function defaultDeck() {
         app: 'zoom.us',
         keys: {
           0: key('Back', { type: 'back' }),
-          1: key('Mute', { type: 'hotkey', key: 'a', mods: ['cmd', 'shift'] }, { color: '#5c1f1f', icon: { symbol: 'helm:meeting-mute' } }),
+          1: key('Mute', { type: 'hotkey', key: 'a', mods: ['cmd', 'shift'] }, { icon: { symbol: 'helm:meeting-mute' } }),
           2: key('Video', { type: 'hotkey', key: 'v', mods: ['cmd', 'shift'] }, { icon: { symbol: 'helm:meeting-video-off' } }),
           3: key('Share', { type: 'hotkey', key: 's', mods: ['cmd', 'shift'] }, { icon: { symbol: 'screen-share' } }),
           4: key('Chat', { type: 'hotkey', key: 'h', mods: ['cmd', 'shift'] }, { icon: { symbol: 'message-circle' } }),

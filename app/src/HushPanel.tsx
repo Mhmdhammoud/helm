@@ -113,7 +113,8 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
           {/* hero: noise cancelling (a full-width row in portrait) */}
           <HushCard style={portrait ? st.heroPortrait : st.hero}>
             <View style={[st.center, !live && st.off]} pointerEvents={live ? 'auto' : 'none'}>
-              <Dial value={level} min={0} max={10} size={portrait ? 260 : 320} label="NOISE CANCELLING" onChange={v => dial(`anc/${v}`)} />
+              <Dial value={level} min={0} max={10} size={portrait ? 260 : 320} label={live ? 'NOISE CANCELLING' : 'HEADPHONES OFF'}
+                format={live ? undefined : () => '–'} onChange={v => dial(`anc/${v}`)} />
             </View>
             <View style={portrait ? st.heroSide : undefined}>
             <View style={st.presets}>
@@ -145,7 +146,7 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
               <HushSegmented options={SELF_VOICE} value={h?.selfVoice} disabled={!live}
                 onChange={v => hush(`selfvoice/${v}`, { selfVoice: v })} />
             </HushCard>
-            <HushCard title="MODES" style={st.toggles}>
+            <HushCard title="MODES" style={portrait ? undefined : st.toggles}>
               <HushToggle label="Conversation mode" hint="Hear the room without taking them off" value={h?.conversation} disabled={!live}
                 onChange={v => hush(`conversation/${v ? 'on' : 'off'}`, { conversation: v })} />
               <View style={st.rule} />
@@ -156,7 +157,7 @@ export function HushPanel({ api, state, error, onClose, refresh }: {
 
           {/* devices + mac */}
           <View style={st.side}>
-            <HushCard title="LISTEN ON" style={st.flex}>
+            <HushCard title="LISTEN ON" style={(h?.devices ?? []).length ? st.flex : undefined}>
               <ScrollView contentContainerStyle={st.devices} showsVerticalScrollIndicator={false}>
                 {(h?.devices ?? []).length === 0 && (
                   <Text style={st.empty}>{connected ? 'No other devices paired yet' : 'Devices show up here when your headphones are on'}</Text>

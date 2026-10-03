@@ -258,7 +258,7 @@ export function Dial({ value, min, max, size, label, onChange, bipolar, format =
       </Canvas>
       <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
         <Text style={[styles.value, { fontSize: wellR * 0.5 }]}>{format(step)}</Text>
-        <Text style={[styles.label, { fontSize: Math.max(8, wellR * 0.13), letterSpacing: Math.max(1, wellR * 0.02) }]} numberOfLines={1}>
+        <Text style={[styles.label, { fontSize: Math.max(10, wellR * 0.15), letterSpacing: Math.max(1, wellR * 0.02) }]} numberOfLines={1}>
           {label}
         </Text>
       </View>

@@ -173,9 +173,14 @@ export function KeyTile({ k, id, size, api, state, editing, picked, feedback, on
               )}
             </>
           ) : (
-            <Path path={outline} style="stroke" strokeWidth={1.2} color={editing ? '#ffffff38' : '#ffffff12'}>
-              <DashPathEffect intervals={[6, 6]} />
-            </Path>
+            // Outside edit mode an empty slot is just a faint well; the dashed "drop here" outline is for editing.
+            editing ? (
+              <Path path={outline} style="stroke" strokeWidth={1.2} color="#ffffff38">
+                <DashPathEffect intervals={[6, 6]} />
+              </Path>
+            ) : (
+              <RoundedRect rect={rrect} color="rgba(255,255,255,0.02)" />
+            )
           )}
           </Group>
         </Canvas>

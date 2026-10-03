@@ -355,10 +355,10 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                   onPress={test} onLongPress={() => {}} />
               </View>
               <View style={portrait ? st.infoPortrait : st.info}>
-              <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Title" autoCapitalize="words" style={st.title} />
+              <Input value={k.title ?? ''} onChangeText={title => set({ title })} placeholder="Key name" autoCapitalize="words" style={st.title} />
               <View style={st.leftActions}>
                 <Pressable onPress={test} style={({ pressed }) => [st.try, pressed && p.pressed]}>
-                  <Symbol name="play.fill" size={14} color={C.bg} />
+                  <Symbol name="play.fill" size={14} color={C.text} />
                   <Text style={st.tryText}>Try it on the Mac</Text>
                 </Pressable>
                 <Text style={[st.result, feedback?.ok === false && st.resultBad]} numberOfLines={2}>{result ?? ' '}</Text>
@@ -383,7 +383,7 @@ export function KeyEditor({ initial, api, pages, state = null, onSave, onClear, 
                   value={k.hold ? 'set' : 'none'}
                   onChange={v => set({ hold: v === 'set' ? (k.hold ?? { type: 'media', key: 'next' }) : undefined })} />
                 {k.hold && <ActionForm action={k.hold} onChange={hold => set({ hold })} api={api} pages={pages} nested />}
-                <Text style={st.note}>Hold the key for half a second to run this instead.</Text>
+                {k.hold && <Text style={st.note}>Hold the key for half a second to run this instead.</Text>}
               </Group>
 
               <View style={st.divider} />
@@ -487,10 +487,10 @@ const st = StyleSheet.create({
     borderColor: C.hairline,
   },
   preview: { width: 200, height: 200, marginBottom: 28 },
-  title: { alignSelf: 'stretch', textAlign: 'center', fontSize: 20, fontWeight: '500', backgroundColor: 'rgba(0,0,0,0.35)' },
+  title: { alignSelf: 'stretch', textAlign: 'left', paddingHorizontal: 16, fontSize: 20, fontWeight: '500', backgroundColor: 'rgba(0,0,0,0.35)' },
   leftActions: { alignItems: 'center', gap: 10, marginTop: 18 },
-  try: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: C.silver, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999 },
-  tryText: { color: C.bg, fontSize: 15, fontWeight: '600' },
+  try: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999 },
+  tryText: { color: C.text, fontSize: 15, fontWeight: '600' },
   result: { color: C.dim, fontSize: 13, textAlign: 'center' },
   resultBad: { color: C.danger },
   clear: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 8, paddingHorizontal: 14 },

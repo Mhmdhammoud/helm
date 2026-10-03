@@ -167,7 +167,7 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
 
   const navigate = (a: Action) => {
     if (a.type === 'page') { auto.current = null; setStack(s => [...s, a.page]); }
-    if (a.type === 'back') setStack(s => (s.length > 1 ? s.slice(0, -1) : s));
+    if (a.type === 'back') setStack(s => (s.length > 1 ? s.slice(0, -1) : [deck.pages[0].id]));
     if (a.type === 'app') onOpenApp(a.app);
   };
 
@@ -206,7 +206,9 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
     });
 
   const gap = 16;
-  const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (area.h - gap * (rows - 1)) / rows));
+  // Portrait: the keys take about half the screen and the controls tray gets the rest (no dead bands).
+  const availH = portrait ? win.height * (editing ? 0.42 : 0.5) : area.h;
+  const size = Math.floor(Math.min((area.w - gap * (cols - 1)) / cols, (availH - gap * (rows - 1)) / rows));
   const dials = deck.dials ?? [];
 
   const floating = useAnimatedStyle(() => ({ transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1.08 }] }));
@@ -214,8 +216,13 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
   const editTools = editing && (
             <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.topRight}>
               <Pill symbol="square.grid.3x3" label={`${cols} × ${rows}`} onPress={() => {
-                const i = GRIDS.findIndex(g => g.cols === cols && g.rows === rows);
-                setDeck({ ...deck, grid: GRIDS[(i + 1) % GRIDS.length] });
+                // A smaller grid hides keys past its last slot (they're kept), so say so before switching.
+                const options = [...GRIDS.map(g => {
+                  const hidden = Object.keys(page.keys).filter(i => +i >= g.cols * g.rows).length;
+                  return `${g.cols} × ${g.rows}${hidden ? ` (hides ${hidden} key${hidden > 1 ? 's' : ''})` : ''}`;
+                }), 'Cancel'];
+                ActionSheetIOS.showActionSheetWithOptions({ options, cancelButtonIndex: GRIDS.length, title: 'Grid size' },
+                  i => i < GRIDS.length && setDeck({ ...deck, grid: GRIDS[i] }));
               }} />
               <Pill symbol={deck.autoProfile ? 'bolt.fill' : 'bolt.slash'} label={deck.autoProfile ? 'Follow apps' : 'Fixed page'}
                 onPress={() => setDeck({ ...deck, autoProfile: !deck.autoProfile })} />
@@ -246,7 +253,8 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
       {portrait && editTools && <View style={st.toolsRow}>{editTools}</View>}
 
       <View style={[st.main, portrait && st.mainPortrait]}>
-        <View style={st.grid} onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+        <View style={[st.grid, portrait && { flex: 0, height: size > 0 ? rows * size + gap * (rows - 1) : availH }, !!error && st.offline]}
+          onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
           {size > 0 && (
             <Animated.View ref={gridRef} key={`${page.id}:${cols}x${rows}`} entering={FadeIn.duration(220)} style={{ gap }}>
               {Array.from({ length: rows }, (_, r) => (
@@ -282,24 +290,27 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
             {(dials.includes('volume') || dials.includes('anc')) && (
               <View style={portrait ? st.dialsRow : st.dials}>
                 {dials.includes('volume') && (
-                  <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={180} label="VOLUME"
-                    format={v => String(v * 5)} onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
+                  <Dial value={Math.round((state?.mac?.volume ?? 0) / 5)} min={0} max={20} size={portrait ? 230 : 180} label="VOLUME"
+                    format={v => (v === Math.round((state?.mac?.volume ?? 0) / 5) ? String(state?.mac?.volume ?? 0) : String(v * 5))}
+                    onChange={v => api.run({ type: 'volume', set: v * 5 }).catch(() => {})} />
                 )}
                 {dials.includes('anc') && state?.headphones && (
                   // Headphones off: show it dimmed and inert rather than a misleading "0".
-                  <View style={state.headphones.status !== 'connected' && st.inert}
-                    pointerEvents={state.headphones.status === 'connected' ? 'auto' : 'none'}>
-                    <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={180}
-                      label={state.headphones.status === 'connected' ? 'NOISE' : 'OFF'}
+                  <Pressable disabled={state.headphones.status === 'connected'} onPress={() => onOpenApp('hush')}
+                    style={state.headphones.status !== 'connected' && st.inert}>
+                    <View pointerEvents={state.headphones.status === 'connected' ? 'auto' : 'none'}>
+                    <Dial value={state.headphones.anc?.level ?? 0} min={0} max={10} size={portrait ? 230 : 180}
+                      label={state.headphones.status === 'connected' ? 'NOISE' : 'HEADPHONES OFF'}
                       format={state.headphones.status === 'connected' ? undefined : () => '–'}
                       onChange={v => api.run({ type: 'hush', cmd: `anc/${v}` }).catch(() => {})} />
-                  </View>
+                    </View>
+                  </Pressable>
                 )}
               </View>
             )}
             {dials.includes('brightness') && (
               // macOS can't report brightness, so the fader keeps its own position and nudges the Mac per step.
-              <Fader label="BRIGHTNESS" height={portrait ? 220 : Math.min(420, area.h)} format={v => `${Math.round((v / 16) * 100)}`}
+              <Fader label="BRIGHTNESS" height={portrait ? 200 : Math.min(420, area.h)} format={() => ''}
                 onStep={d => {
                   const action = { type: 'media' as const, key: d > 0 ? 'brightness-up' as const : 'brightness-down' as const };
                   api.run(Math.abs(d) === 1 ? action : { type: 'multi', steps: Array(Math.abs(d)).fill(action), delayMs: 0 }).catch(() => {});
@@ -309,11 +320,18 @@ export function DeckScreen({ api, deck, setDeck, state, error, macName, onMacs, 
         )}
       </View>
 
+      {error && !editing && !flash ? (
+        <Pressable onPress={refresh} style={({ pressed }) => [st.retry, pressed && { opacity: 0.6 }]}>
+          <Symbol name="arrow.clockwise" size={13} weight="semibold" color={C.danger} />
+          <Text style={st.retryText}>Can't reach {macName} · Retry</Text>
+        </Pressable>
+      ) : editSlot == null && (
       <Text style={[st.status, flash && st.err]} numberOfLines={1}>
         {flash ?? (editing
           ? drag ? (drag.from != null ? 'Drop on a slot to move it (a key there swaps places), or on the library to remove it.' : 'Drop it on any slot.') : 'Tap a key to change it  ·  hold and drag to move it  ·  hold a page for options'
-          : error ? `Can't reach ${macName}: ${error}` : state?.mac?.app ? `${state.mac.app} is in front` : '')}
+          : !state ? `Connecting to ${macName}…` : state.mac?.app ? `${state.mac.app} is in front` : '')}
       </Text>
+      )}
 
       {drag && (
         <Animated.View pointerEvents="none" style={[st.floating, { width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 }, floating]}>
@@ -388,7 +406,7 @@ const st = StyleSheet.create({
   tabsRow: { gap: 10, alignItems: 'center' },
   capsule: { flexDirection: 'row', padding: 4, borderRadius: 20, ...glass },
   puck: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 16, backgroundColor: C.silver },
-  tab: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 18, borderRadius: 16 },
   tabText: { color: C.secondary, fontSize: 15, fontWeight: '600' },
   tabTextOn: { color: C.bg },
   topRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -403,12 +421,18 @@ const st = StyleSheet.create({
   dials: { justifyContent: 'center', gap: 28 },
   dialsRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },
   strip: { flexDirection: 'row', alignItems: 'center', gap: 28 },
-  stripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40, paddingBottom: 8 },
+  stripRow: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40, marginTop: 24, paddingVertical: 24,
+    borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.hairline,
+  },
+  offline: { opacity: 0.45 },
+  retry: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: 'rgba(232,160,160,0.12)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.danger },
+  retryText: { color: C.danger, fontSize: 14, fontWeight: '600' },
   mainPortrait: { flexDirection: 'column' },
   toolsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: -10, marginBottom: 12 },
-  libraryPortrait: { width: '100%', height: 360 },
+  libraryPortrait: { width: '100%', flex: 1, marginTop: 16 },
   lifted: { opacity: 0.25 },
-  inert: { opacity: 0.3 },
+  inert: { opacity: 0.5 },
   floating: { position: 'absolute', left: 0, top: 0, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 16 } },
   status: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, letterSpacing: 0.2 },
 });
